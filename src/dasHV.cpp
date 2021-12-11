@@ -49,24 +49,52 @@ public:
     WebSocketClient_Adapter ( char * pClass, const StructInfo * info, Context * ctx )
         : HvWebSocketClient_Adapter(info), classPtr(pClass), context(ctx) {
         onopen = [=]() {
-            if ( auto fnOnOpen = get_onOpen(classPtr) ) {
-                invoke_onOpen(context,fnOnOpen,classPtr);
-            }
+            lock_guard<mutex> guard(lock);
+            que.emplace_back([=](){
+                onOpen();
+            });
         };
         onclose = [=]() {
-            if ( auto fnOnClose = get_onClose(classPtr) ) {
-                invoke_onClose(context,fnOnClose,classPtr);
-            }
+            lock_guard<mutex> guard(lock);
+            que.emplace_back([=](){
+                onClose();
+            });
         };
         onmessage = [=]( const string & msg ) {
-            if ( auto fnOnMessage = get_onMessage(classPtr) ) {
-                invoke_onMessage(context,fnOnMessage,classPtr,(char *)msg.c_str());
-            }
+            lock_guard<mutex> guard(lock);
+            que.emplace_back([=](){
+                onMessage(msg);
+            });
         };
+    }
+    void onOpen() {
+        if ( auto fnOnOpen = get_onOpen(classPtr) ) {
+            invoke_onOpen(context,fnOnOpen,classPtr);
+        }
+    }
+    void onClose() {
+        if ( auto fnOnClose = get_onClose(classPtr) ) {
+            invoke_onClose(context,fnOnClose,classPtr);
+        }
+    }
+    void onMessage ( const string & msg ) {
+        if ( auto fnOnMessage = get_onMessage(classPtr) ) {
+            invoke_onMessage(context,fnOnMessage,classPtr,(char *)msg.c_str());
+        }
+    }
+    void process() {
+        vector<function<void()>> q;
+        {
+            lock_guard<mutex> guard(lock);
+            swap(q, que);
+        }
+        for ( auto & ev : q ) ev();
     }
 protected:
     void *      classPtr;
     Context *   context;
+    mutex       lock;
+    vector<function<void()>>    que;
 };
 
 struct WebSocketClientAnnotation : ManagedStructureAnnotation<hv::WebSocketClient> {
@@ -89,6 +117,15 @@ int das_wsc_send ( hv::WebSocketClient & client, const char* msg ) {
 
 int das_wsc_send_buf ( hv::WebSocketClient & client, const char* msg, int32_t len, ws_opcode opcode ) {
     return client.send(msg, len, opcode);
+}
+
+bool das_wsc_is_connected ( hv::WebSocketClient & client ) {
+    return client.isConnected();
+}
+
+void das_wsc_process_events ( hv::WebSocketClient & client ) {
+    auto adapter = (WebSocketClient_Adapter *) &client;
+    adapter->process();
 }
 
 struct WebSocketServerAnnotation : ManagedStructureAnnotation<hv::WebSocketServer> {
@@ -192,8 +229,15 @@ public:
             SideEffects::worstDefault, "das_wsc_send_buf")
                 ->args({"self","msg","len","opcode"});
         using hv_ws_close = DAS_CALL_MEMBER(hv::WebSocketClient::close);
-        addExtern<DAS_CALL_METHOD(hv_ws_close)>(*this, lib, "close", SideEffects::worstDefault, DAS_CALL_MEMBER_CPP(hv::WebSocketClient::close))
-	        ->args({"self"});
+        addExtern<DAS_CALL_METHOD(hv_ws_close)>(*this, lib, "close",
+            SideEffects::worstDefault, DAS_CALL_MEMBER_CPP(hv::WebSocketClient::close))
+    	        ->args({"self"});
+        addExtern<DAS_BIND_FUN(das_wsc_is_connected)>(*this, lib, "is_connected",
+            SideEffects::worstDefault,"das_wsc_is_connected")
+	            ->args({"self"});
+        addExtern<DAS_BIND_FUN(das_wsc_process_events)>(*this, lib, "process_event_que",
+            SideEffects::worstDefault,"das_wsc_process_events")
+	            ->args({"self"});
         // server
         addAnnotation(make_smart<WebSocketServerAnnotation>(lib));
         addAnnotation(make_smart<WebSocketChannelAnnotation>(lib));

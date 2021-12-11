@@ -10,8 +10,9 @@ require rtti
 
 class HvWebSocketClient
     client:WebSocketClient?
-    def init
+    def init(url:string) : int
         client = make_web_socket_client(unsafe(addr(self)), class_info(self))
+        return open(*client, url)
     def operator delete
         if client != null
             unsafe
@@ -19,6 +20,12 @@ class HvWebSocketClient
     def abstract onOpen : void
     def abstract onClose : void
     def abstract onMessage ( msg:string# ) : void
+    def is_connected : bool
+        return is_connected(*client)
+    def process_event_que
+        process_event_que(*client)
+    def send(text:string)
+        send(*client,text)
 
 class HvWebSocketServer
     server:WebSocketServer?
