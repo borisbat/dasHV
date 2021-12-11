@@ -16453,8 +16453,7 @@ template <class Key, class T, class IgnoredLess = std::less<Key>,
                 return it->second;
             }
         }
-
-        throw std::out_of_range("key not found");
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     const T& at(const Key& key) const
@@ -16466,8 +16465,7 @@ template <class Key, class T, class IgnoredLess = std::less<Key>,
                 return it->second;
             }
         }
-
-        throw std::out_of_range("key not found");
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     size_type erase(const Key& key)
