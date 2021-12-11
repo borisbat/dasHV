@@ -29,6 +29,10 @@ class ExampleWebSocketServer : HvWebSocketServer
 def main()
     var wss = new ExampleWebSocketServer()
     wss->init(9999)
-    wss->run()
+    wss->start()
+    while true
+        wss->tick()
+        sleep(0u)
+    wss->stop()
     unsafe
         delete wss

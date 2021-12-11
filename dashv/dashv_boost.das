@@ -23,7 +23,7 @@ class HvWebSocketClient
     def is_connected : bool
         return is_connected(*client)
     def process_event_que
-        process_event_que(*client)
+        tick(*client)
     def send(text:string)
         send(*client,text)
 
@@ -31,8 +31,12 @@ class HvWebSocketServer
     server:WebSocketServer?
     def init(port:int)
         server = make_web_socket_server(port, unsafe(addr(self)), class_info(self))
-    def run : int
-        return run_server(server)
+    def start : int
+        return start(server)
+    def stop : int
+        return stop(server)
+    def tick : void
+        tick(server)
     def abstract onOpen ( channel:WebSocketChannel?; url:string# ): void
     def abstract onClose ( channel:WebSocketChannel? ): void
     def abstract onMessage ( channel:WebSocketChannel?; msg:string# ) : void

@@ -82,7 +82,7 @@ public:
             invoke_onMessage(context,fnOnMessage,classPtr,(char *)msg.c_str());
         }
     }
-    void process() {
+    void tick() {
         vector<function<void()>> q;
         {
             lock_guard<mutex> guard(lock);
@@ -123,9 +123,9 @@ bool das_wsc_is_connected ( hv::WebSocketClient & client ) {
     return client.isConnected();
 }
 
-void das_wsc_process_events ( hv::WebSocketClient & client ) {
+void das_wsc_tick ( hv::WebSocketClient & client ) {
     auto adapter = (WebSocketClient_Adapter *) &client;
-    adapter->process();
+    adapter->tick();
 }
 
 struct WebSocketServerAnnotation : ManagedStructureAnnotation<hv::WebSocketServer> {
@@ -147,24 +147,45 @@ public:
         registerWebSocketService(&service);
         service.onopen = [=](const WebSocketChannelPtr& channel, const std::string& url) {
             lock_guard<mutex> guard(lock);
-            if ( auto fnOnOpen = get_onOpen(classPtr) ) {
-                invoke_onOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url.c_str());
-            }
+            que.emplace_back([=](){
+                onOpen(channel,url);
+            });
         };
         service.onclose = [=](const WebSocketChannelPtr& channel) {
             lock_guard<mutex> guard(lock);
-            if ( auto fnOnClose = get_onClose(classPtr) ) {
-                invoke_onClose(context,fnOnClose,classPtr,channel.get());
-            }
+            que.emplace_back([=](){
+                onClose(channel);
+            });
         };
         service.onmessage = [=](const WebSocketChannelPtr& channel, const std::string&msg) {
             lock_guard<mutex> guard(lock);
-            if ( auto fnOnMessage = get_onMessage(classPtr) ) {
-                invoke_onMessage(context,fnOnMessage,classPtr,channel.get(),(char *)msg.c_str());
-            }
+            que.emplace_back([=](){
+                onMessage(channel,msg);
+            });
         };
     }
+    void onOpen ( const WebSocketChannelPtr& channel, const std::string& url) {
+        if ( auto fnOnOpen = get_onOpen(classPtr) ) {
+            invoke_onOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url.c_str());
+        }
+    }
+    void onClose ( const WebSocketChannelPtr& channel ) {
+        if ( auto fnOnClose = get_onClose(classPtr) ) {
+            invoke_onClose(context,fnOnClose,classPtr,channel.get());
+        }
+    }
+    void onMessage (const WebSocketChannelPtr& channel, const std::string&msg) {
+        if ( auto fnOnMessage = get_onMessage(classPtr) ) {
+            invoke_onMessage(context,fnOnMessage,classPtr,channel.get(),(char *)msg.c_str());
+        }
+    }
     void tick() {
+        vector<function<void()>> q;
+        {
+            lock_guard<mutex> guard(lock);
+            swap(q, que);
+        }
+        for ( auto & ev : q ) ev();
         lock_guard<mutex> guard(lock);
         if ( auto fnOnTick = get_onTick(classPtr) ) {
             invoke_onTick(context,fnOnTick,classPtr);
@@ -175,6 +196,7 @@ protected:
     void *      classPtr;
     Context *   context;
     mutex       lock;
+    vector<function<void()>>    que;
 };
 
 hv::WebSocketServer * makeWebSocketServer ( int port, const void * pClass, const StructInfo * info, Context * context ) {
@@ -195,14 +217,19 @@ int das_wss_send_fragment ( hv::WebSocketChannel * channel, const char * buf, in
     return channel->send(buf, len, fragment, opcode);
 }
 
-int das_wss_run ( hv::WebSocketServer * server ) {
+int das_wss_start ( hv::WebSocketServer * server ) {
     auto adapter = (WebSocketServer_Adapter *) server;
-    adapter->start();
-    for ( ;; ) {
-        adapter->tick();
-        hv_sleep(0);
-    }
-    adapter->stop();
+    return adapter->start();
+}
+
+void das_wss_tick ( hv::WebSocketServer * server ) {
+    auto adapter = (WebSocketServer_Adapter *) server;
+    adapter->tick();
+}
+
+int das_wss_stop ( hv::WebSocketServer * server ) {
+    auto adapter = (WebSocketServer_Adapter *) server;
+    return adapter->stop();
 }
 
 class Module_HV : public Module {
@@ -235,8 +262,8 @@ public:
         addExtern<DAS_BIND_FUN(das_wsc_is_connected)>(*this, lib, "is_connected",
             SideEffects::worstDefault,"das_wsc_is_connected")
 	            ->args({"self"});
-        addExtern<DAS_BIND_FUN(das_wsc_process_events)>(*this, lib, "process_event_que",
-            SideEffects::worstDefault,"das_wsc_process_events")
+        addExtern<DAS_BIND_FUN(das_wsc_tick)>(*this, lib, "tick",
+            SideEffects::worstDefault,"das_tick")
 	            ->args({"self"});
         // server
         addAnnotation(make_smart<WebSocketServerAnnotation>(lib));
@@ -253,10 +280,14 @@ public:
         addExtern<DAS_BIND_FUN(das_wss_send_fragment)> (*this, lib, "send",
             SideEffects::worstDefault, "das_wss_send_fragment")
                 ->args({"channel","msg","len","fragment","opcode"});
-
-
-        addExtern<DAS_BIND_FUN(das_wss_run)> (*this, lib, "run_server",
-            SideEffects::worstDefault, "das_wss_run")
+        addExtern<DAS_BIND_FUN(das_wss_start)> (*this, lib, "start",
+            SideEffects::worstDefault, "das_wss_start")
+                ->args({"server"});
+        addExtern<DAS_BIND_FUN(das_wss_tick)> (*this, lib, "tick",
+            SideEffects::worstDefault, "das_wss_tick")
+                ->args({"server"});
+        addExtern<DAS_BIND_FUN(das_wss_stop)> (*this, lib, "stop",
+            SideEffects::worstDefault, "das_wss_stop")
                 ->args({"server"});
     }
     virtual ModuleAotType aotRequire ( TextWriter & tw ) const override {
