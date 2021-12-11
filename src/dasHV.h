@@ -7,6 +7,9 @@
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketClient,hv::WebSocketClient)
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketServer,hv::WebSocketServer)
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketChannel,hv::WebSocketChannel)
+MAKE_EXTERNAL_TYPE_FACTORY(HttpRequest,HttpRequest)
+MAKE_EXTERNAL_TYPE_FACTORY(HttpResponse,HttpResponse)
+MAKE_EXTERNAL_TYPE_FACTORY(HttpContext,hv::HttpContext)
 
 DAS_BIND_ENUM_CAST(ws_opcode)
 DAS_BASE_BIND_ENUM_GEN(ws_opcode,ws_opcode)
@@ -31,5 +34,10 @@ int das_wss_send_fragment ( hv::WebSocketChannel * channel, const char * buf, in
 int das_wss_start ( hv::WebSocketServer * server );
 void das_wss_tick ( hv::WebSocketServer * server );
 int das_wss_stop ( hv::WebSocketServer * server );
+void das_wss_get ( hv::WebSocketServer * server, const char * url, Lambda lmb, Context * context, LineInfoArg * at );
+void das_wss_post ( hv::WebSocketServer * server, const char * url, Lambda lmb, Context * context, LineInfoArg * at );
+
+int das_resp_string ( HttpResponse & resp, const char * msg );
+
 
 }

@@ -11,6 +11,6 @@ def main
     let root = get_das_root() + "/modules/dasHV/src/"
     fopen(root + "dashv_gen.inc","wb") <| $ ( cpp_file )
         log_cpp_class_adapter(cpp_file, "HvWebSocketClient_Adapter", typeinfo(ast_typedecl type<HvWebSocketClient>))
-        log_cpp_class_adapter(cpp_file, "HvWebSocketServer_Adapter", typeinfo(ast_typedecl type<HvWebSocketServer>))
+        log_cpp_class_adapter(cpp_file, "HvWebServer_Adapter", typeinfo(ast_typedecl type<HvWebServer>))
     return true
 

@@ -12,6 +12,9 @@
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketClient,hv::WebSocketClient)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketServer,hv::WebSocketServer)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketChannel,hv::WebSocketChannel)
+IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpRequest,HttpRequest)
+IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpResponse,HttpResponse)
+IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpContext,hv::HttpContext)
 
 namespace das {
 
@@ -140,43 +143,65 @@ struct WebSocketChannelAnnotation : ManagedStructureAnnotation<hv::WebSocketChan
     }
 };
 
-class WebSocketServer_Adapter : public hv::WebSocketServer, public HvWebSocketServer_Adapter {
+struct HttpRequestAnnotation : ManagedStructureAnnotation<HttpRequest> {
+    HttpRequestAnnotation(ModuleLibrary & ml)
+        : ManagedStructureAnnotation ("HttpRequest", ml, "HttpRequest") {
+    }
+};
+
+struct HttpResponseAnnotation : ManagedStructureAnnotation<HttpResponse> {
+    HttpResponseAnnotation(ModuleLibrary & ml)
+        : ManagedStructureAnnotation ("HttpResponse", ml, "HttpResponse") {
+    }
+};
+
+struct HttpContextAnnotation : ManagedStructureAnnotation<hv::HttpContext> {
+    HttpContextAnnotation(ModuleLibrary & ml)
+        : ManagedStructureAnnotation ("HttpContext", ml, "hv::HttpContext") {
+    }
+};
+
+class WebServer_Adapter : public hv::WebSocketServer, public HvWebServer_Adapter {
 public:
-    WebSocketServer_Adapter ( char * pClass, const StructInfo * info, Context * ctx )
-        : HvWebSocketServer_Adapter(info), classPtr(pClass), context(ctx) {
+    WebServer_Adapter ( char * pClass, const StructInfo * info, Context * ctx )
+        : HvWebServer_Adapter(info), classPtr(pClass), context(ctx) {
         registerWebSocketService(&service);
+        registerHttpService(&router);
         service.onopen = [=](const WebSocketChannelPtr& channel, const std::string& url) {
             lock_guard<mutex> guard(lock);
             que.emplace_back([=](){
-                onOpen(channel,url);
+                onWsOpen(channel,url);
             });
         };
         service.onclose = [=](const WebSocketChannelPtr& channel) {
             lock_guard<mutex> guard(lock);
             que.emplace_back([=](){
-                onClose(channel);
+                onWsClose(channel);
             });
         };
         service.onmessage = [=](const WebSocketChannelPtr& channel, const std::string&msg) {
             lock_guard<mutex> guard(lock);
             que.emplace_back([=](){
-                onMessage(channel,msg);
+                onWsMessage(channel,msg);
             });
         };
     }
-    void onOpen ( const WebSocketChannelPtr& channel, const std::string& url) {
-        if ( auto fnOnOpen = get_onOpen(classPtr) ) {
-            invoke_onOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url.c_str());
+    void onWsOpen ( const WebSocketChannelPtr& channel, const std::string& url) {
+        lock_guard<mutex> guard(lock);
+        if ( auto fnOnOpen = get_onWsOpen(classPtr) ) {
+            invoke_onWsOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url.c_str());
         }
     }
-    void onClose ( const WebSocketChannelPtr& channel ) {
-        if ( auto fnOnClose = get_onClose(classPtr) ) {
-            invoke_onClose(context,fnOnClose,classPtr,channel.get());
+    void onWsClose ( const WebSocketChannelPtr& channel ) {
+        lock_guard<mutex> guard(lock);
+        if ( auto fnOnClose = get_onWsClose(classPtr) ) {
+            invoke_onWsClose(context,fnOnClose,classPtr,channel.get());
         }
     }
-    void onMessage (const WebSocketChannelPtr& channel, const std::string&msg) {
-        if ( auto fnOnMessage = get_onMessage(classPtr) ) {
-            invoke_onMessage(context,fnOnMessage,classPtr,channel.get(),(char *)msg.c_str());
+    void onWsMessage (const WebSocketChannelPtr& channel, const std::string&msg) {
+        lock_guard<mutex> guard(lock);
+        if ( auto fnOnMessage = get_onWsMessage(classPtr) ) {
+            invoke_onWsMessage(context,fnOnMessage,classPtr,channel.get(),(char *)msg.c_str());
         }
     }
     void tick() {
@@ -191,7 +216,22 @@ public:
             invoke_onTick(context,fnOnTick,classPtr);
         }
     }
+    void GET ( const char * relative_path, Lambda lmb, Context * context, LineInfoArg * at ) {
+        lock_guard<mutex> guard(lock);
+        router.GET(relative_path,[=](HttpRequest * req,HttpResponse * resp){
+            lock_guard<mutex> guard(lock);
+            return das_invoke_lambda<int>::invoke<HttpRequest*,HttpResponse*>(context,at,lmb,req,resp);
+        });
+    }
+    void POST ( const char * relative_path, Lambda lmb, Context * context, LineInfoArg * at ) {
+        lock_guard<mutex> guard(lock);
+        router.POST(relative_path,[=](HttpRequest * req,HttpResponse * resp){
+            lock_guard<mutex> guard(lock);
+            return das_invoke_lambda<int>::invoke<HttpRequest*,HttpResponse*>(context,at,lmb,req,resp);
+        });
+    }
 protected:
+    HttpService router;
     WebSocketService service;
     void *      classPtr;
     Context *   context;
@@ -200,7 +240,7 @@ protected:
 };
 
 hv::WebSocketServer * makeWebSocketServer ( int port, const void * pClass, const StructInfo * info, Context * context ) {
-    auto adapter = new WebSocketServer_Adapter((char *)pClass,info,context);
+    auto adapter = new WebServer_Adapter((char *)pClass,info,context);
     adapter->port = port;
     return adapter;
 }
@@ -218,18 +258,32 @@ int das_wss_send_fragment ( hv::WebSocketChannel * channel, const char * buf, in
 }
 
 int das_wss_start ( hv::WebSocketServer * server ) {
-    auto adapter = (WebSocketServer_Adapter *) server;
+    auto adapter = (WebServer_Adapter *) server;
     return adapter->start();
 }
 
 void das_wss_tick ( hv::WebSocketServer * server ) {
-    auto adapter = (WebSocketServer_Adapter *) server;
+    auto adapter = (WebServer_Adapter *) server;
     adapter->tick();
 }
 
 int das_wss_stop ( hv::WebSocketServer * server ) {
-    auto adapter = (WebSocketServer_Adapter *) server;
+    auto adapter = (WebServer_Adapter *) server;
     return adapter->stop();
+}
+
+void das_wss_get ( hv::WebSocketServer * server, const char * url, Lambda lmb, Context * context, LineInfoArg * at ) {
+    auto adapter = (WebServer_Adapter *) server;
+    adapter->GET(url, lmb, context, at);
+}
+
+void das_wss_post ( hv::WebSocketServer * server, const char * url, Lambda lmb, Context * context, LineInfoArg * at ) {
+    auto adapter = (WebServer_Adapter *) server;
+    adapter->POST(url, lmb, context, at);
+}
+
+int das_resp_string ( HttpResponse & resp, const char * msg ) {
+    return resp.String(msg ? msg : "");
 }
 
 class Module_HV : public Module {
@@ -268,6 +322,9 @@ public:
         // server
         addAnnotation(make_smart<WebSocketServerAnnotation>(lib));
         addAnnotation(make_smart<WebSocketChannelAnnotation>(lib));
+        addAnnotation(make_smart<HttpRequestAnnotation>(lib));
+        addAnnotation(make_smart<HttpResponseAnnotation>(lib));
+        addAnnotation(make_smart<HttpContextAnnotation>(lib));
         addExtern<DAS_BIND_FUN(makeWebSocketServer)> (*this, lib, "make_web_socket_server",
             SideEffects::worstDefault, "makeWebSocketServer")
                 ->args({"port","class","info","context"});
@@ -289,6 +346,16 @@ public:
         addExtern<DAS_BIND_FUN(das_wss_stop)> (*this, lib, "stop",
             SideEffects::worstDefault, "das_wss_stop")
                 ->args({"server"});
+        addExtern<DAS_BIND_FUN(das_wss_get)> (*this, lib, "GET",
+            SideEffects::worstDefault, "das_wss_get")
+                ->args({"server","url","lambda","context","at"})->unsafeOperation = true;
+        addExtern<DAS_BIND_FUN(das_wss_post)> (*this, lib, "POST",
+            SideEffects::worstDefault, "das_wss_post")
+                ->args({"server","url","lambda","context","at"})->unsafeOperation = true;
+        // response
+        addExtern<DAS_BIND_FUN(das_resp_string)> (*this, lib, "TEXT_PLAIN",
+            SideEffects::worstDefault, "das_resp_string")
+                ->args({"response","test"});
     }
     virtual ModuleAotType aotRequire ( TextWriter & tw ) const override {
         tw << "#include \"../modules/dasHV/src/aot_hv.h\"\n";

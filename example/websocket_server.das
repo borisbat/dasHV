@@ -5,19 +5,23 @@ require dashv/dashv_boost
 
 require fio
 
-class ExampleWebSocketServer : HvWebSocketServer
+class ExampleWebServer : HvWebServer
     channels:table<WebSocketChannel?;string>
     ptime:clock
     def ExampleWebSocketServer
         ptime = get_clock()
-    def override onOpen ( channel:WebSocketChannel?; url:string# ) : void
-        print("onOpen: {intptr(channel)}, {url}\n")
+    def override onInit
+        GET("/ping") <| @ ( var req:HttpRequest; var resp:HttpResponse ) : int
+            print("ping\n")
+            return resp |> TEXT_PLAIN("pong")
+    def override onWsOpen ( channel:WebSocketChannel?; url:string# ) : void
+        print("onWsOpen: {intptr(channel)}, {url}\n")
         channels[channel] := url
-    def override onClose ( channel:WebSocketChannel? ): void
-        print("onClose: {intptr(channel)}\n")
+    def override onWsClose ( channel:WebSocketChannel? ): void
+        print("onWsClose: {intptr(channel)}\n")
         erase(channels, channel)
-    def override onMessage ( channel:WebSocketChannel?; msg:string# ) : void
-        print("onMessage: {intptr(channel)}, {msg}\n")
+    def override onWsMessage ( channel:WebSocketChannel?; msg:string# ) : void
+        print("onWsMessage: {intptr(channel)}, {msg}\n")
     def override onTick : void
         let ntime = get_clock()
         if ntime-ptime > 1.
@@ -27,7 +31,8 @@ class ExampleWebSocketServer : HvWebSocketServer
 
 [export]
 def main()
-    var wss = new ExampleWebSocketServer()
+    print("server on port 9999\n")
+    var wss = new ExampleWebServer()
     wss->init(9999)
     wss->start()
     while true
