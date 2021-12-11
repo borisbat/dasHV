@@ -22,7 +22,7 @@
 #endif
 
 #ifndef HAVE_SYS_TIME_H
-#define HAVE_SYS_TIME_H 1
+#define HAVE_SYS_TIME_H 0
 #endif
 
 #ifndef HAVE_FCNTL_H
@@ -30,7 +30,7 @@
 #endif
 
 #ifndef HAVE_PTHREAD_H
-#define HAVE_PTHREAD_H 1
+#define HAVE_PTHREAD_H 0
 #endif
 
 #ifndef HAVE_GETTID
@@ -38,19 +38,19 @@
 #endif
 
 #ifndef HAVE_STRLCPY
-#define HAVE_STRLCPY 1
+#define HAVE_STRLCPY 0
 #endif
 
 #ifndef HAVE_STRLCAT
-#define HAVE_STRLCAT 1
+#define HAVE_STRLCAT 0
 #endif
 
 #ifndef HAVE_CLOCK_GETTIME
-#define HAVE_CLOCK_GETTIME 1
+#define HAVE_CLOCK_GETTIME 0
 #endif
 
 #ifndef HAVE_GETTIMEOFDAY
-#define HAVE_GETTIMEOFDAY 1
+#define HAVE_GETTIMEOFDAY 0
 #endif
 
 #ifndef HAVE_PTHREAD_SPIN_LOCK
@@ -68,8 +68,10 @@
 /* #undef WITH_OPENSSL */
 /* #undef WITH_GNUTLS */
 /* #undef WITH_MBEDTLS */
+
 /* #undef ENABLE_UDS */
 /* #undef USE_MULTIMAP */
+
 /* #undef WITH_KCP */
 
 #endif // HV_CONFIG_H_

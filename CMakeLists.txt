@@ -1,0 +1,43 @@
+
+IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_DISABLED)))
+    SET(DAS_HV_INCLUDED TRUE)
+    MESSAGE(STATUS "dasHV module included.")
+
+
+	SET(DAS_HV_DIR ${PROJECT_SOURCE_DIR}/modules/dasHV)
+
+	include(ExternalProject)
+	ExternalProject_Add(
+		LIBHV
+		SOURCE_DIR ${DAS_HV_DIR}/libhv
+		CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${DAS_HV_DIR}/hv -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=OFF -DBUILD_EXAMPLES=OFF
+		BINARY_DIR ${DAS_HV_DIR}/libhv/build
+	)
+
+	IF(APPLE)
+		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.a)
+	ELSEIF(UNIX)
+		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.a)
+	ELSE()
+		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.lib)
+	ENDIF()
+
+    LIST(APPEND CMAKE_MODULE_PATH ${DAS_HV_DIR})
+
+	# libDasModuleHV
+	SET(DAS_HV_MODULE_SRC
+		${DAS_HV_DIR}/src/dasHV.h
+		${DAS_HV_DIR}/src/dasHV.cpp
+	)
+
+	ADD_MODULE_LIB(libDasModuleHV)
+	ADD_MODULE_CPP(HV)
+	ADD_LIBRARY(libDasModuleHV ${DAS_HV_MODULE_SRC} ${DAS_HV_MODULE_PLATFORM_SRC})
+	ADD_DEPENDENCIES(libDasModuleHV LIBHV)
+	TARGET_INCLUDE_DIRECTORIES(libDasModuleHV PUBLIC "${DAS_HV_DIR}/hv/include")
+	TARGET_LINK_LIBRARIES(libDasModuleHV ${HV_LIBRARIES})
+	SETUP_CPP11(libDasModuleHV)
+
+	ADD_MODULE_DAS(dashv dashv dashv_boost)
+
+ENDIF()
