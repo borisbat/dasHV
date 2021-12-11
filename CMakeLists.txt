@@ -15,9 +15,13 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 	)
 
 	IF(APPLE)
-		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.a)
+		SET(HV_LIBRARIES
+			${DAS_HV_DIR}/hv/lib/libhv_static.a
+			"-framework CoreFoundation"
+			"-framework Security"
+		)
 	ELSEIF(UNIX)
-		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.a)
+		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/libhv_static.a)
 	ELSE()
 		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.lib)
 	ENDIF()
