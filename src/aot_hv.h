@@ -8,6 +8,7 @@
 #pragma warning(disable:4458)
 #endif
 
+#include <hv/requests.h>
 #include <hv/HttpServer.h>
 #include <hv/WebSocketClient.h>
 #include <hv/WebSocketServer.h>

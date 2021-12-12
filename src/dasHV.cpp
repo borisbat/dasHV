@@ -44,6 +44,117 @@ public:
 	}
 };
 
+class Enumeration_http_method : public das::Enumeration {
+public:
+    Enumeration_http_method() : das::Enumeration("http_method") {
+        external = true;
+        cppName = "http_method";
+        baseType = (das::Type) das::ToBasicType< das::underlying_type< http_method >::type >::type;
+        addIEx("DELETE",        "HTTP_DELETE",       int64_t(http_method::HTTP_DELETE),      das::LineInfo());
+        addIEx("GET",           "HTTP_GET",          int64_t(http_method::HTTP_GET),         das::LineInfo());
+        addIEx("HEAD",          "HTTP_HEAD",         int64_t(http_method::HTTP_HEAD),        das::LineInfo());
+        addIEx("POST",          "HTTP_POST",         int64_t(http_method::HTTP_POST),        das::LineInfo());
+        addIEx("PUT",           "HTTP_PUT",          int64_t(http_method::HTTP_PUT),         das::LineInfo());
+        addIEx("CONNECT",       "HTTP_CONNECT",      int64_t(http_method::HTTP_CONNECT),     das::LineInfo());
+        addIEx("OPTIONS",       "HTTP_OPTIONS",      int64_t(http_method::HTTP_OPTIONS),     das::LineInfo());
+        addIEx("TRACE",         "HTTP_TRACE",        int64_t(http_method::HTTP_TRACE),       das::LineInfo());
+        addIEx("COPY",          "HTTP_COPY",         int64_t(http_method::HTTP_COPY),        das::LineInfo());
+        addIEx("LOCK",          "HTTP_LOCK",         int64_t(http_method::HTTP_LOCK),        das::LineInfo());
+        addIEx("MKCOL",         "HTTP_MKCOL",        int64_t(http_method::HTTP_MKCOL),       das::LineInfo());
+        addIEx("MOVE",          "HTTP_MOVE",         int64_t(http_method::HTTP_MOVE),        das::LineInfo());
+        addIEx("PROPFIND",      "HTTP_PROPFIND",     int64_t(http_method::HTTP_PROPFIND),    das::LineInfo());
+        addIEx("PROPPATCH",     "HTTP_PROPPATCH",    int64_t(http_method::HTTP_PROPPATCH),   das::LineInfo());
+        addIEx("SEARCH",        "HTTP_SEARCH",       int64_t(http_method::HTTP_SEARCH),      das::LineInfo());
+        addIEx("UNLOCK",        "HTTP_UNLOCK",       int64_t(http_method::HTTP_UNLOCK),      das::LineInfo());
+        addIEx("BIND",          "HTTP_BIND",         int64_t(http_method::HTTP_BIND),        das::LineInfo());
+        addIEx("REBIND",        "HTTP_REBIND",       int64_t(http_method::HTTP_REBIND),      das::LineInfo());
+        addIEx("UNBIND",        "HTTP_UNBIND",       int64_t(http_method::HTTP_UNBIND),      das::LineInfo());
+        addIEx("ACL",           "HTTP_ACL",          int64_t(http_method::HTTP_ACL),         das::LineInfo());
+        addIEx("REPORT",        "HTTP_REPORT",       int64_t(http_method::HTTP_REPORT),      das::LineInfo());
+        addIEx("MKACTIVITY",    "HTTP_MKACTIVITY",   int64_t(http_method::HTTP_MKACTIVITY),  das::LineInfo());
+        addIEx("CHECKOUT",      "HTTP_CHECKOUT",     int64_t(http_method::HTTP_CHECKOUT),    das::LineInfo());
+        addIEx("MERGE",         "HTTP_MERGE",        int64_t(http_method::HTTP_MERGE),       das::LineInfo());
+        addIEx("MSEARCH",       "HTTP_MSEARCH",      int64_t(http_method::HTTP_SEARCH),      das::LineInfo());
+        addIEx("NOTIFY",        "HTTP_NOTIFY",       int64_t(http_method::HTTP_NOTIFY),      das::LineInfo());
+        addIEx("SUBSCRIBE",     "HTTP_SUBSCRIBE",    int64_t(http_method::HTTP_SUBSCRIBE),   das::LineInfo());
+        addIEx("UNSUBSCRIBE",   "HTTP_UNSUBSCRIBE",  int64_t(http_method::HTTP_UNSUBSCRIBE), das::LineInfo());
+        addIEx("PATCH",         "HTTP_PATCH",        int64_t(http_method::HTTP_PATCH),       das::LineInfo());
+        addIEx("PURGE",         "HTTP_PURGE",        int64_t(http_method::HTTP_PURGE),       das::LineInfo());
+        addIEx("MKCALENDAR",    "HTTP_MKCALENDAR",   int64_t(http_method::HTTP_MKCALENDAR),  das::LineInfo());
+        addIEx("LINK",          "HTTP_LINK",         int64_t(http_method::HTTP_LINK),        das::LineInfo());
+        addIEx("UNLINK",        "HTTP_UNLINK",       int64_t(http_method::HTTP_UNLINK),      das::LineInfo());
+        addIEx("SOURCE",        "HTTP_SOURCE",       int64_t(http_method::HTTP_SOURCE),      das::LineInfo());
+
+	}
+};
+
+class Enumeration_http_status : public das::Enumeration {
+public:
+    Enumeration_http_status() : das::Enumeration("http_status") {
+        external = true;
+        cppName = "http_status";
+        baseType = (das::Type) das::ToBasicType< das::underlying_type< http_status >::type >::type;
+        addIEx("CONTINUE",                          "CONTINUE",                         int64_t(http_status::HTTP_STATUS_CONTINUE), das::LineInfo());
+        addIEx("SWITCHING_PROTOCOLS",               "SWITCHING_PROTOCOLS",              int64_t(http_status::HTTP_STATUS_SWITCHING_PROTOCOLS),  das::LineInfo());
+        addIEx("PROCESSING",                        "PROCESSING",                       int64_t(http_status::HTTP_STATUS_PROCESSING),   das::LineInfo());
+        addIEx("OK",                                "OK",                               int64_t(http_status::HTTP_STATUS_OK),   das::LineInfo());
+        addIEx("CREATED",                           "CREATED",                          int64_t(http_status::HTTP_STATUS_CREATED),  das::LineInfo());
+        addIEx("ACCEPTED",                          "ACCEPTED",                         int64_t(http_status::HTTP_STATUS_ACCEPTED), das::LineInfo());
+        addIEx("NON_AUTHORITATIVE_INFORMATION",     "NON_AUTHORITATIVE_INFORMATION",    int64_t(http_status::HTTP_STATUS_NON_AUTHORITATIVE_INFORMATION),    das::LineInfo());
+        addIEx("NO_CONTENT",                        "NO_CONTENT",                       int64_t(http_status::HTTP_STATUS_NO_CONTENT),   das::LineInfo());
+        addIEx("RESET_CONTENT",                     "RESET_CONTENT",                    int64_t(http_status::HTTP_STATUS_RESET_CONTENT),    das::LineInfo());
+        addIEx("PARTIAL_CONTENT",                   "PARTIAL_CONTENT",                  int64_t(http_status::HTTP_STATUS_PARTIAL_CONTENT),  das::LineInfo());
+        addIEx("MULTI_STATUS",                      "MULTI_STATUS",                     int64_t(http_status::HTTP_STATUS_MULTI_STATUS), das::LineInfo());
+        addIEx("ALREADY_REPORTED",                  "ALREADY_REPORTED",                 int64_t(http_status::HTTP_STATUS_ALREADY_REPORTED), das::LineInfo());
+        addIEx("IM_USED",                           "IM_USED",                          int64_t(http_status::HTTP_STATUS_IM_USED),  das::LineInfo());
+        addIEx("MULTIPLE_CHOICES",                  "MULTIPLE_CHOICES",                 int64_t(http_status::HTTP_STATUS_MULTIPLE_CHOICES), das::LineInfo());
+        addIEx("MOVED_PERMANENTLY",                 "MOVED_PERMANENTLY",                int64_t(http_status::HTTP_STATUS_MOVED_PERMANENTLY),    das::LineInfo());
+        addIEx("FOUND",                             "FOUND",                            int64_t(http_status::HTTP_STATUS_FOUND),    das::LineInfo());
+        addIEx("SEE_OTHER",                         "SEE_OTHER",                        int64_t(http_status::HTTP_STATUS_SEE_OTHER),    das::LineInfo());
+        addIEx("NOT_MODIFIED",                      "NOT_MODIFIED",                     int64_t(http_status::HTTP_STATUS_NOT_MODIFIED), das::LineInfo());
+        addIEx("USE_PROXY",                         "USE_PROXY",                        int64_t(http_status::HTTP_STATUS_USE_PROXY),    das::LineInfo());
+        addIEx("TEMPORARY_REDIRECT",                "TEMPORARY_REDIRECT",               int64_t(http_status::HTTP_STATUS_TEMPORARY_REDIRECT),   das::LineInfo());
+        addIEx("PERMANENT_REDIRECT",                "PERMANENT_REDIRECT",               int64_t(http_status::HTTP_STATUS_PERMANENT_REDIRECT),   das::LineInfo());
+        addIEx("BAD_REQUEST",                       "BAD_REQUEST",                      int64_t(http_status::HTTP_STATUS_BAD_REQUEST),  das::LineInfo());
+        addIEx("UNAUTHORIZED",                      "UNAUTHORIZED",                     int64_t(http_status::HTTP_STATUS_UNAUTHORIZED), das::LineInfo());
+        addIEx("PAYMENT_REQUIRED",                  "PAYMENT_REQUIRED",                 int64_t(http_status::HTTP_STATUS_PAYMENT_REQUIRED), das::LineInfo());
+        addIEx("FORBIDDEN",                         "FORBIDDEN",                        int64_t(http_status::HTTP_STATUS_FORBIDDEN),    das::LineInfo());
+        addIEx("NOT_FOUND",                         "NOT_FOUND",                        int64_t(http_status::HTTP_STATUS_NOT_FOUND),    das::LineInfo());
+        addIEx("METHOD_NOT_ALLOWED",                "METHOD_NOT_ALLOWED",               int64_t(http_status::HTTP_STATUS_METHOD_NOT_ALLOWED),   das::LineInfo());
+        addIEx("NOT_ACCEPTABLE",                    "NOT_ACCEPTABLE",                   int64_t(http_status::HTTP_STATUS_NOT_ACCEPTABLE),   das::LineInfo());
+        addIEx("PROXY_AUTHENTICATION_REQUIRED",     "PROXY_AUTHENTICATION_REQUIRED",    int64_t(http_status::HTTP_STATUS_PROXY_AUTHENTICATION_REQUIRED),    das::LineInfo());
+        addIEx("REQUEST_TIMEOUT",                   "REQUEST_TIMEOUT",                  int64_t(http_status::HTTP_STATUS_REQUEST_TIMEOUT),  das::LineInfo());
+        addIEx("CONFLICT",                          "CONFLICT",                         int64_t(http_status::HTTP_STATUS_CONFLICT), das::LineInfo());
+        addIEx("GONE",                              "GONE",                             int64_t(http_status::HTTP_STATUS_GONE), das::LineInfo());
+        addIEx("LENGTH_REQUIRED",                   "LENGTH_REQUIRED",                  int64_t(http_status::HTTP_STATUS_LENGTH_REQUIRED),  das::LineInfo());
+        addIEx("PRECONDITION_FAILED",               "PRECONDITION_FAILED",              int64_t(http_status::HTTP_STATUS_PRECONDITION_FAILED),  das::LineInfo());
+        addIEx("PAYLOAD_TOO_LARGE",                 "PAYLOAD_TOO_LARGE",                int64_t(http_status::HTTP_STATUS_PAYLOAD_TOO_LARGE),    das::LineInfo());
+        addIEx("URI_TOO_LONG",                      "URI_TOO_LONG",                     int64_t(http_status::HTTP_STATUS_URI_TOO_LONG), das::LineInfo());
+        addIEx("UNSUPPORTED_MEDIA_TYPE",            "UNSUPPORTED_MEDIA_TYPE",           int64_t(http_status::HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE),   das::LineInfo());
+        addIEx("RANGE_NOT_SATISFIABLE",             "RANGE_NOT_SATISFIABLE",            int64_t(http_status::HTTP_STATUS_RANGE_NOT_SATISFIABLE),    das::LineInfo());
+        addIEx("EXPECTATION_FAILED",                "EXPECTATION_FAILED",               int64_t(http_status::HTTP_STATUS_EXPECTATION_FAILED),   das::LineInfo());
+        addIEx("MISDIRECTED_REQUEST",               "MISDIRECTED_REQUEST",              int64_t(http_status::HTTP_STATUS_MISDIRECTED_REQUEST),  das::LineInfo());
+        addIEx("UNPROCESSABLE_ENTITY",              "UNPROCESSABLE_ENTITY",             int64_t(http_status::HTTP_STATUS_UNPROCESSABLE_ENTITY), das::LineInfo());
+        addIEx("LOCKED",                            "LOCKED",                           int64_t(http_status::HTTP_STATUS_LOCKED),   das::LineInfo());
+        addIEx("FAILED_DEPENDENCY",                 "FAILED_DEPENDENCY",                int64_t(http_status::HTTP_STATUS_FAILED_DEPENDENCY),    das::LineInfo());
+        addIEx("UPGRADE_REQUIRED",                  "UPGRADE_REQUIRED",                 int64_t(http_status::HTTP_STATUS_UPGRADE_REQUIRED), das::LineInfo());
+        addIEx("PRECONDITION_REQUIRED",             "PRECONDITION_REQUIRED",            int64_t(http_status::HTTP_STATUS_PRECONDITION_REQUIRED),    das::LineInfo());
+        addIEx("TOO_MANY_REQUESTS",                 "TOO_MANY_REQUESTS",                int64_t(http_status::HTTP_STATUS_TOO_MANY_REQUESTS),    das::LineInfo());
+        addIEx("REQUEST_HEADER_FIELDS_TOO_LARGE",   "REQUEST_HEADER_FIELDS_TOO_LARGE",  int64_t(http_status::HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE),  das::LineInfo());
+        addIEx("UNAVAILABLE_FOR_LEGAL_REASONS",     "UNAVAILABLE_FOR_LEGAL_REASONS",    int64_t(http_status::HTTP_STATUS_UNAVAILABLE_FOR_LEGAL_REASONS),    das::LineInfo());
+        addIEx("INTERNAL_SERVER_ERROR",             "INTERNAL_SERVER_ERROR",            int64_t(http_status::HTTP_STATUS_INTERNAL_SERVER_ERROR),    das::LineInfo());
+        addIEx("NOT_IMPLEMENTED",                   "NOT_IMPLEMENTED",                  int64_t(http_status::HTTP_STATUS_NOT_IMPLEMENTED),  das::LineInfo());
+        addIEx("BAD_GATEWAY",                       "BAD_GATEWAY",                      int64_t(http_status::HTTP_STATUS_BAD_GATEWAY),  das::LineInfo());
+        addIEx("SERVICE_UNAVAILABLE",               "SERVICE_UNAVAILABLE",              int64_t(http_status::HTTP_STATUS_SERVICE_UNAVAILABLE),  das::LineInfo());
+        addIEx("GATEWAY_TIMEOUT",                   "GATEWAY_TIMEOUT",                  int64_t(http_status::HTTP_STATUS_GATEWAY_TIMEOUT),  das::LineInfo());
+        addIEx("HTTP_VERSION_NOT_SUPPORTED",        "HTTP_VERSION_NOT_SUPPORTED",       int64_t(http_status::HTTP_STATUS_HTTP_VERSION_NOT_SUPPORTED),   das::LineInfo());
+        addIEx("VARIANT_ALSO_NEGOTIATES",           "VARIANT_ALSO_NEGOTIATES",          int64_t(http_status::HTTP_STATUS_VARIANT_ALSO_NEGOTIATES),  das::LineInfo());
+        addIEx("INSUFFICIENT_STORAGE",              "INSUFFICIENT_STORAGE",             int64_t(http_status::HTTP_STATUS_INSUFFICIENT_STORAGE), das::LineInfo());
+        addIEx("LOOP_DETECTED",                     "LOOP_DETECTED",                    int64_t(http_status::HTTP_STATUS_LOOP_DETECTED),    das::LineInfo());
+        addIEx("NOT_EXTENDED",                      "NOT_EXTENDED",                     int64_t(http_status::HTTP_STATUS_NOT_EXTENDED), das::LineInfo());
+        addIEx("NETWORK_AUTHENTICATION_REQUIRED",   "NETWORK_AUTHENTICATION_REQUIRED",  int64_t(http_status::HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED),  das::LineInfo());
+	}
+};
 
 #include "dashv_gen.inc"
 
@@ -146,12 +257,22 @@ struct WebSocketChannelAnnotation : ManagedStructureAnnotation<hv::WebSocketChan
 struct HttpRequestAnnotation : ManagedStructureAnnotation<HttpRequest> {
     HttpRequestAnnotation(ModuleLibrary & ml)
         : ManagedStructureAnnotation ("HttpRequest", ml, "HttpRequest") {
+        addField<DAS_BIND_MANAGED_FIELD(method)>("method");
+        addField<DAS_BIND_MANAGED_FIELD(url)>("url");
+        addField<DAS_BIND_MANAGED_FIELD(scheme)>("scheme");
+        addField<DAS_BIND_MANAGED_FIELD(host)>("host");
+        addField<DAS_BIND_MANAGED_FIELD(port)>("port");
+        addField<DAS_BIND_MANAGED_FIELD(path)>("path");
+        addField<DAS_BIND_MANAGED_FIELD(timeout)>("timeout");
+        addField<DAS_BIND_MANAGED_FIELD(body)>("body");
     }
 };
 
 struct HttpResponseAnnotation : ManagedStructureAnnotation<HttpResponse> {
     HttpResponseAnnotation(ModuleLibrary & ml)
         : ManagedStructureAnnotation ("HttpResponse", ml, "HttpResponse") {
+        addField<DAS_BIND_MANAGED_FIELD(body)>("body");
+        addField<DAS_BIND_MANAGED_FIELD(status_code)>("status_code");
     }
 };
 
@@ -286,6 +407,46 @@ int das_resp_string ( HttpResponse & resp, const char * msg ) {
     return resp.String(msg ? msg : "");
 }
 
+void das_httpr_set_header ( HttpRequest & req, const char * key, const char * value ) {
+    req.SetHeader(key ? key : "", value ? value : value);
+}
+
+http_headers das_req_table_to_headers ( const TTable<char *,char *> & tab) {
+    http_headers headers;
+    char ** keys = (char **)tab.keys;
+    char ** values = (char **)tab.data;
+    uint64_t * hashes = (uint64_t *)tab.hashes;
+    for ( uint32_t i=0; i!=tab.capacity; ++i ) {
+        if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
+            headers[keys[i]] = values[i];
+            printf("%s->%s\n", keys[i], values[i]);
+        }
+    }
+    return headers;
+}
+
+void das_req_GET ( const char * url, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
+    auto resp = requests::get(url ? url : "");
+    das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
+}
+
+void das_req_GET_H ( const char * url, const TTable<char *,char *> & tab, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
+    auto headers = das_req_table_to_headers(tab);
+    auto resp = requests::get(url ? url : "", headers);
+    das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
+}
+
+void das_req_POST ( const char * url, const char * text, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
+    auto resp = requests::post(url ? url : "", text ? text : "");
+    das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
+}
+
+void das_req_POST_H ( const char * url, const char * text, const TTable<char *,char *> & tab, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
+    auto headers = das_req_table_to_headers(tab);
+    auto resp = requests::post(url ? url : "", text ? text : "",headers);
+    das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
+}
+
 class Module_HV : public Module {
 public:
     Module_HV() : Module("dashv") {
@@ -295,6 +456,8 @@ public:
         lib.addModule(Module::require("rtti"));
         addEnumeration(make_smart<Enumeration_ws_opcode>());
         addEnumeration(make_smart<Enumeration_ws_session_type>());
+        addEnumeration(make_smart<Enumeration_http_method>());
+        addEnumeration(make_smart<Enumeration_http_status>());
         // client
         addAnnotation(make_smart<WebSocketClientAnnotation>(lib));
         addExtern<DAS_BIND_FUN(makeWebSocketClient)> (*this, lib, "make_web_socket_client",
@@ -356,6 +519,23 @@ public:
         addExtern<DAS_BIND_FUN(das_resp_string)> (*this, lib, "TEXT_PLAIN",
             SideEffects::worstDefault, "das_resp_string")
                 ->args({"response","test"});
+        // request
+        addExtern<DAS_BIND_FUN(das_httpr_set_header)> (*this, lib, "set_header",
+            SideEffects::worstDefault, "das_httpr_set_header")
+                ->args({"request","key","value"});
+        // requests
+        addExtern<DAS_BIND_FUN(das_req_GET)> (*this, lib, "GET",
+            SideEffects::worstDefault, "das_req_GET")
+                ->args({"url","block","context","at"});
+        addExtern<DAS_BIND_FUN(das_req_GET_H)> (*this, lib, "GET",
+            SideEffects::worstDefault, "das_req_GET_H")
+                ->args({"url","headers","block","context","at"});
+        addExtern<DAS_BIND_FUN(das_req_POST)> (*this, lib, "POST",
+            SideEffects::worstDefault, "das_req_POST")
+                ->args({"url","text","block","context","at"});
+        addExtern<DAS_BIND_FUN(das_req_POST_H)> (*this, lib, "POST",
+            SideEffects::worstDefault, "das_req_POST_H")
+                ->args({"url","text","headers","block","context","at"});
     }
     virtual ModuleAotType aotRequire ( TextWriter & tw ) const override {
         tw << "#include \"../modules/dasHV/src/aot_hv.h\"\n";

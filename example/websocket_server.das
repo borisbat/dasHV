@@ -14,6 +14,9 @@ class ExampleWebServer : HvWebServer
         GET("/ping") <| @ ( var req:HttpRequest; var resp:HttpResponse ) : int
             print("ping\n")
             return resp |> TEXT_PLAIN("pong")
+        POST("/echo") <| @ ( var req:HttpRequest; var resp:HttpResponse ) : int
+            print("echo\n")
+            return resp |> TEXT_PLAIN(string(req.body))
     def override onWsOpen ( channel:WebSocketChannel?; url:string# ) : void
         print("onWsOpen: {intptr(channel)}, {url}\n")
         channels[channel] := url
