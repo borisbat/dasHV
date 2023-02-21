@@ -27,7 +27,7 @@ class ExampleWebServer : HvWebServer
         print("onWsMessage: {intptr(channel)}, {msg}\n")
     def override onTick : void
         let ntime = get_clock()
-        if ntime-ptime > 1.
+        if ntime-ptime > 1.lf
             ptime = ntime
             for ch in keys(channels)
                 send(ch, "tick at {ptime}", ws_opcode WS_OPCODE_TEXT, true)
