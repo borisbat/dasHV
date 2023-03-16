@@ -77,7 +77,12 @@ message(STATUS "CMAKE_LIBRARY_OUTPUT_DIRECTORY=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
 
 set(INCDIRS . include 3rd/include)
 set(LIBDIRS . lib 3rd/lib)
+
+if(WITH_OPENSSL AND WIN32)
+include_directories(${INCDIRS} ${SRCDIR} ${OPENSSL_INCLUDE_DIR})
+else()
 include_directories(${INCDIRS} ${SRCDIR})
+endif()
 link_directories(${LIBDIRS})
 
 message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
