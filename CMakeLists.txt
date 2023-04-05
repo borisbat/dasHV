@@ -104,4 +104,18 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 
 	ADD_MODULE_DAS(dashv dashv dashv_boost)
 
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/modules/dasHV/dashv
+        DESTINATION modules/dasHV
+        FILES_MATCHING
+        PATTERN "*.das"
+    )
+
+    file(GLOB DAS_HV_EXAMPLES
+        ${PROJECT_SOURCE_DIR}/modules/dasHV/example/*.*
+    )
+
+    install(FILES ${DAS_HV_EXAMPLES}
+        DESTINATION examples/hv
+    )
+
 ENDIF()
