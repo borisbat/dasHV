@@ -419,7 +419,6 @@ http_headers das_req_table_to_headers ( const TTable<char *,char *> & tab) {
     for ( uint32_t i=0; i!=tab.capacity; ++i ) {
         if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
             headers[keys[i]] = values[i];
-            printf("%s->%s\n", keys[i], values[i]);
         }
     }
     return headers;
@@ -444,6 +443,35 @@ void das_req_POST ( const char * url, const char * text, const TBlock<void,HttpR
 void das_req_POST_H ( const char * url, const char * text, const TTable<char *,char *> & tab, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
     auto headers = das_req_table_to_headers(tab);
     auto resp = requests::post(url ? url : "", text ? text : "",headers);
+    das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
+}
+
+void das_req_POST_HF ( const char * url, const char * text, const TTable<char *,char *> & tab, const TTable<char *,char *> & from,
+        const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at ) {
+    using namespace requests;
+    Request req(new HttpRequest);
+    req->method = HTTP_POST;
+    req->url = url ? url : "";
+    req->headers =das_req_table_to_headers(tab);
+    req->body = text ? text : "";
+    char ** keys = (char **)from.keys;
+    char ** values = (char **)from.data;
+    uint64_t * hashes = (uint64_t *)from.hashes;
+    for ( uint32_t i=0; i!=from.capacity; ++i ) {
+        if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
+            FormData data;
+            auto value = values[i];
+            if ( value != nullptr ) {
+                if (*value == '@') {
+                    data.filename = value+1;
+                } else {
+                    data.content = value;
+                }
+            }
+            req->form[keys[i] ? keys[i] : ""] = data;
+        }
+    }
+    auto resp = request(req);
     das_invoke<void>::invoke<HttpResponse*>(context,at,block,resp.get());
 }
 
@@ -536,6 +564,10 @@ public:
         addExtern<DAS_BIND_FUN(das_req_POST_H)> (*this, lib, "POST",
             SideEffects::worstDefault, "das_req_POST_H")
                 ->args({"url","text","headers","block","context","at"});
+        addExtern<DAS_BIND_FUN(das_req_POST_HF)> (*this, lib, "POST",
+            SideEffects::worstDefault, "das_req_POST_HF")
+                ->args({"url","text","headers","from","block","context","at"});
+
     }
     virtual ModuleAotType aotRequire ( TextWriter & tw ) const override {
         tw << "#include \"../modules/dasHV/src/aot_hv.h\"\n";

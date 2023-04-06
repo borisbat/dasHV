@@ -51,5 +51,6 @@ void das_req_GET ( const char * url, const TBlock<void,HttpResponse*> & block, C
 void das_req_GET_H ( const char * url, const TTable<char *,char *> & tab, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at );
 void das_req_POST ( const char * url, const char * text, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at );
 void das_req_POST_H ( const char * url, const char * text, const TTable<char *,char *> & tab, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at );
+void das_req_POST_HF ( const char * url, const char * text, const TTable<char *,char *> & tab, const TTable<char *,char *> & from, const TBlock<void,HttpResponse*> & block, Context * context, LineInfoArg * at );
 
 }
