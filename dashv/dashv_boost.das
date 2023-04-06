@@ -49,3 +49,13 @@ class HvWebServer
         unsafe(GET(server,uri,lmb))
     def POST(uri:string; lmb:lambda<(var req:HttpRequest; var resp:HttpResponse):int> ) : void
         unsafe(POST(server,uri,lmb))
+
+def get_body_bytes ( resp:HttpResponse? ) : array<uint8>
+    var bytes : array<uint8>
+    if resp==null || resp.status_code!=http_status OK || resp.content_length==0
+        return <- bytes
+    bytes |> resize(resp.content_length)
+    peek(resp.body) <| $ ( bodybytes )
+        unsafe
+            memcpy(addr(bytes[0]),reinterpret<void?> bodybytes,resp.content_length)
+    return <- bytes

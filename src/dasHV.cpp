@@ -273,6 +273,8 @@ struct HttpResponseAnnotation : ManagedStructureAnnotation<HttpResponse> {
         : ManagedStructureAnnotation ("HttpResponse", ml, "HttpResponse") {
         addField<DAS_BIND_MANAGED_FIELD(body)>("body");
         addField<DAS_BIND_MANAGED_FIELD(status_code)>("status_code");
+        addField<DAS_BIND_MANAGED_FIELD(content)>("content");
+        addField<DAS_BIND_MANAGED_FIELD(content_length)>("content_length");
     }
 };
 
