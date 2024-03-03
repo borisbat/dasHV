@@ -417,7 +417,7 @@ http_headers das_req_table_to_headers ( const TTable<char *,char *> & tab) {
     http_headers headers;
     char ** keys = (char **)tab.keys;
     char ** values = (char **)tab.data;
-    uint64_t * hashes = (uint64_t *)tab.hashes;
+    auto * hashes = (TableHashKey *)tab.hashes;
     for ( uint32_t i=0; i!=tab.capacity; ++i ) {
         if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
             headers[keys[i]] = values[i];
@@ -458,7 +458,7 @@ void das_req_POST_HF ( const char * url, const char * text, const TTable<char *,
     req->body = text ? text : "";
     char ** keys = (char **)from.keys;
     char ** values = (char **)from.data;
-    uint64_t * hashes = (uint64_t *)from.hashes;
+    auto * hashes = (TableHashKey *)from.hashes;
     for ( uint32_t i=0; i!=from.capacity; ++i ) {
         if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
             FormData data;
