@@ -13,24 +13,6 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 		set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
 		set(OPENSSL_LIBRARIES ${OPENSSL_ROOT_DIR}/lib)
 
-		if(${CMAKE_SIZEOF_VOID_P} EQUAL 8)
-			set(OPENSSL_ARCH "VC-WIN64A")
-		else()
-			set(OPENSSL_ARCH "VC-WIN32")
-		endif()
-
-		ExternalProject_Add(openssl_build
-			URL "https://www.openssl.org/source/openssl-1.1.1l.tar.gz"
-			URL_HASH SHA256=0b7a3e5e59c34827fe0c3a74b7ec8baef302b98fa80088d7f9153aa16fa76bd1
-			PREFIX ${OPENSSL_ROOT_DIR}
-			CONFIGURE_COMMAND perl Configure ${OPENSSL_ARCH} no-shared --prefix=${OPENSSL_ROOT_DIR} --openssldir=${OPENSSL_ROOT_DIR}
-			BUILD_COMMAND nmake
-			INSTALL_COMMAND nmake install_sw
-			BUILD_IN_SOURCE 1
-		)
-		include_directories(${OPENSSL_INCLUDE_DIR})
-		link_directories(${OPENSSL_LIBRARIES})
-
 		ExternalProject_Add(
 			LIBHV
 			SOURCE_DIR ${DAS_HV_DIR}/libhv
@@ -43,12 +25,11 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 				-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 				-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
 				-DCMAKE_LINKER=${CMAKE_LINKER}
-				-DWITH_OPENSSL=ON
+				-DWITH_OPENSSL=OFF
 				-DOPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}
 				-DOPENSSL_LIBRARIES="${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}"
 			BINARY_DIR ${DAS_HV_DIR}/libhv/build
 		)
-		add_dependencies(LIBHV openssl_build)
 	ELSE()
 		ExternalProject_Add(
 			LIBHV
@@ -78,8 +59,6 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 	ELSEIF(WIN32)
 		SET(HV_LIBRARIES
 			${DAS_HV_DIR}/hv/lib/hv_static.lib
-			${OPENSSL_ROOT_DIR}/lib/libcrypto.lib
-			${OPENSSL_ROOT_DIR}/lib/libssl.lib
 			Crypt32.lib
 		)
 	ELSE()
