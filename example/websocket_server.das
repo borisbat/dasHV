@@ -19,7 +19,7 @@ class ExampleWebServer : HvWebServer
             return resp |> TEXT_PLAIN(string(req.body))
     def override onWsOpen ( channel:WebSocketChannel?; url:string# ) : void
         print("onWsOpen: {intptr(channel)}, {url}\n")
-        channels[channel] := url
+        channels |> insert_clone(channel, url)
     def override onWsClose ( channel:WebSocketChannel? ): void
         print("onWsClose: {intptr(channel)}\n")
         erase(channels, channel)
