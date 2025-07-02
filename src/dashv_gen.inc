@@ -9,9 +9,9 @@ protected:
   int _das_class_method_offset[3];
 public:
   HvWebSocketClient_Adapter ( const StructInfo * info ) {
-      _das_class_method_offset[__fn_onOpen] = adapt_field_offset("onOpen",info);
-      _das_class_method_offset[__fn_onClose] = adapt_field_offset("onClose",info);
-      _das_class_method_offset[__fn_onMessage] = adapt_field_offset("onMessage",info);
+      _das_class_method_offset[__fn_onOpen] = info->fields[4]->offset;
+      _das_class_method_offset[__fn_onClose] = info->fields[5]->offset;
+      _das_class_method_offset[__fn_onMessage] = info->fields[6]->offset;
   }
   __forceinline Func get_onOpen ( void * self ) const {
     return getDasClassMethod(self,_das_class_method_offset[__fn_onOpen]);
@@ -54,10 +54,10 @@ protected:
   int _das_class_method_offset[4];
 public:
   HvWebServer_Adapter ( const StructInfo * info ) {
-      _das_class_method_offset[__fn_onWsOpen] = adapt_field_offset("onWsOpen",info);
-      _das_class_method_offset[__fn_onWsClose] = adapt_field_offset("onWsClose",info);
-      _das_class_method_offset[__fn_onWsMessage] = adapt_field_offset("onWsMessage",info);
-      _das_class_method_offset[__fn_onTick] = adapt_field_offset("onTick",info);
+      _das_class_method_offset[__fn_onWsOpen] = info->fields[7]->offset;
+      _das_class_method_offset[__fn_onWsClose] = info->fields[8]->offset;
+      _das_class_method_offset[__fn_onWsMessage] = info->fields[9]->offset;
+      _das_class_method_offset[__fn_onTick] = info->fields[10]->offset;
   }
   __forceinline Func get_onWsOpen ( void * self ) const {
     return getDasClassMethod(self,_das_class_method_offset[__fn_onWsOpen]);
