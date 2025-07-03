@@ -1,6 +1,7 @@
 options gen2
 // options log_infer_passes = true
 // options log_generics = true
+options rtti
 
 require fio
 require daslib/ast_boost
