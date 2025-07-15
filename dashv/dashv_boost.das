@@ -41,7 +41,12 @@ class HvWebSocketClient {
 class HvWebServer {
     server : WebSocketServer?
     def init(port : int) {
-        server = make_web_socket_server(port, unsafe(addr(self)), class_info(self))
+        server = make_web_socket_server(port, 0, "", unsafe(addr(self)), class_info(self))
+        onInit()
+    }
+    def init_wss(port,httpsPort : int; pathToCert : string = "") {
+        var certPath = !empty(pathToCert) ? pathToCert : get_das_root() + "/modules/dasHV/libhv/cert"
+        server = make_web_socket_server(port, httpsPort, certPath, unsafe(addr(self)), class_info(self))
         onInit()
     }
     def start : int {

@@ -54,10 +54,10 @@ protected:
   int _das_class_method_offset[4];
 public:
   HvWebServer_Adapter ( const StructInfo * info ) {
-      _das_class_method_offset[__fn_onWsOpen] = info->fields[7]->offset;
-      _das_class_method_offset[__fn_onWsClose] = info->fields[8]->offset;
-      _das_class_method_offset[__fn_onWsMessage] = info->fields[9]->offset;
-      _das_class_method_offset[__fn_onTick] = info->fields[10]->offset;
+      _das_class_method_offset[__fn_onWsOpen] = info->fields[8]->offset;
+      _das_class_method_offset[__fn_onWsClose] = info->fields[9]->offset;
+      _das_class_method_offset[__fn_onWsMessage] = info->fields[10]->offset;
+      _das_class_method_offset[__fn_onTick] = info->fields[11]->offset;
   }
   __forceinline Func get_onWsOpen ( void * self ) const {
     return getDasClassMethod(self,_das_class_method_offset[__fn_onWsOpen]);

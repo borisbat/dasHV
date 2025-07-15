@@ -144,6 +144,18 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
         PATTERN "*.das"
     )
 
+	install(DIRECTORY ${PROJECT_SOURCE_DIR}/modules/dasHV/libhv/cert
+        DESTINATION ${DAS_INSTALL_MODULESDIR}/dasHV
+        FILES_MATCHING
+        PATTERN "*.crt"
+    )
+
+	install(DIRECTORY ${PROJECT_SOURCE_DIR}/modules/dasHV/libhv/cert
+        DESTINATION ${DAS_INSTALL_MODULESDIR}/dasHV
+        FILES_MATCHING
+        PATTERN "*.key"
+    )
+
     file(GLOB DAS_HV_EXAMPLES
         ${PROJECT_SOURCE_DIR}/modules/dasHV/example/*.*
     )

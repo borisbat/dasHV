@@ -362,9 +362,25 @@ protected:
     vector<function<void()>>    que;
 };
 
-hv::WebSocketServer * makeWebSocketServer ( int port, const void * pClass, const StructInfo * info, Context * context ) {
+string getDasRoot ( void );
+
+hv::WebSocketServer * makeWebSocketServer ( int port, int httpsPort, const char * pathToCert, const void * pClass, const StructInfo * info, Context * context, LineInfoArg * at ) {
     auto adapter = new WebServer_Adapter((char *)pClass,info,context);
     adapter->port = port;
+    adapter->https_port = httpsPort;
+    if ( httpsPort ) {
+        hssl_ctx_init_param_t param;
+        memset(&param, 0, sizeof(param));
+        string crt_root = pathToCert ? pathToCert : getDasRoot() + "/modules/dasHV/libhv/cert";
+        auto crt_file = crt_root + "/server.crt";
+        auto key_file = crt_root + "/server.key";
+        param.crt_file = crt_file.c_str();
+        param.key_file = key_file.c_str();
+        param.endpoint = HSSL_SERVER;
+        if (hssl_ctx_init(&param) == NULL) {
+            context->throw_error_at(at, "libHV: hssl_ctx_init failed! Please check the certificate files `%s` and `%s`.", crt_file.c_str(), key_file.c_str());
+        }
+    }
     return adapter;
 }
 
@@ -520,7 +536,7 @@ public:
         addAnnotation(make_smart<HttpContextAnnotation>(lib));
         addExtern<DAS_BIND_FUN(makeWebSocketServer)> (*this, lib, "make_web_socket_server",
             SideEffects::worstDefault, "makeWebSocketServer")
-                ->args({"port","class","info","context"});
+                ->args({"port","https_port","pathToCert","class","info","context","at"});
         addExtern<DAS_BIND_FUN(das_wss_send)> (*this, lib, "send",
             SideEffects::worstDefault, "das_wss_send")
                 ->args({"channel","msg","opcode","fin"});
