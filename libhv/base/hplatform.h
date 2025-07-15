@@ -17,6 +17,7 @@
 #elif defined(__APPLE__) && (defined(__GNUC__) || defined(__xlC__) || defined(__xlc__))
     #include <TargetConditionals.h>
     #if defined(TARGET_OS_MAC) && TARGET_OS_MAC
+        #include <AvailabilityMacros.h>
         #define OS_MAC
     #elif defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
         #define OS_IOS
@@ -41,20 +42,31 @@
     #undef  OS_UNIX
     #define OS_WIN
 #else
+    #undef  OS_WIN
     #define OS_UNIX
 #endif
 
 // ARCH
-#if defined(__i386) || defined(__i386__) || defined(_M_IX86)
-    #define ARCH_X86
-    #define ARCH_X86_32
-#elif defined(__x86_64) || defined(__x86_64__) || defined(__amd64) || defined(_M_X64)
+#if defined(__x86_64) || defined(__x86_64__) || defined(__amd64) || defined(_M_X64)
     #define ARCH_X64
     #define ARCH_X86_64
-#elif defined(__arm__)
-    #define ARCH_ARM
-#elif defined(__aarch64__) || defined(__ARM64__)
+#elif defined(__i386) || defined(__i386__) || defined(_M_IX86)
+    #define ARCH_X86
+    #define ARCH_X86_32
+#elif defined(__aarch64__) || defined(__ARM64__) || defined(_M_ARM64)
     #define ARCH_ARM64
+#elif defined(__arm__) || defined(_M_ARM)
+    #define ARCH_ARM
+#elif defined(__mips64__)
+    #define ARCH_MIPS64
+#elif defined(__mips__)
+    #define ARCH_MIPS
+#elif defined(__riscv)
+    #define ARCH_RISCV
+#elif defined(__ppc64__) || defined(__powerpc64__)
+    #define ARCH_PPC64
+#elif defined(__ppc__) || defined(__powerpc__)
+    #define ARCH_PPC
 #else
     #warning "Untested hardware architecture!"
 #endif
@@ -109,13 +121,9 @@
 #pragma warning (disable: 4100) // unused param
 #pragma warning (disable: 4102) // unreferenced label
 #pragma warning (disable: 4244) // conversion loss of data
-#pragma warning (disable: 4251) // STL dll
 #pragma warning (disable: 4267) // size_t => int
 #pragma warning (disable: 4819) // Unicode
 #pragma warning (disable: 4996) // _CRT_SECURE_NO_WARNINGS
-
-#elif defined(__MINGW32__) || defined(__MINGW64__)
-#define COMPILER_MINGW
 
 #elif defined(__GNUC__)
 #define COMPILER_GCC
@@ -127,18 +135,43 @@
 #elif defined(__clang__)
 #define COMPILER_CLANG
 
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+#define COMPILER_MINGW
+
+#elif defined(__MSYS__)
+#define COMPILER_MSYS
+
+#elif defined(__CYGWIN__)
+#define COMPILER_CYGWIN
+
 #else
 #warning "Untested compiler!"
 #endif
 
+#ifndef __GNUC_PREREQ
+#define __GNUC_PREREQ(a, b)	0
+#endif
+
 // headers
 #ifdef OS_WIN
+    #ifndef _WIN32_WINNT
+    #define _WIN32_WINNT 0x0600
+    #elif _WIN32_WINNT < 0x0600
+    #undef _WIN32_WINNT
+    #define _WIN32_WINNT 0x0600
+    #endif
     #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
     #endif
+    #ifndef _CRT_NONSTDC_NO_DEPRECATE
     #define _CRT_NONSTDC_NO_DEPRECATE
+    #endif
+    #ifndef _CRT_SECURE_NO_WARNINGS
     #define _CRT_SECURE_NO_WARNINGS
+    #endif
+    #ifndef _WINSOCK_DEPRECATED_NO_WARNINGS
     #define _WINSOCK_DEPRECATED_NO_WARNINGS
+    #endif
     #include <winsock2.h>
     #include <ws2tcpip.h>   // for inet_pton,inet_ntop
     #include <windows.h>
@@ -222,11 +255,22 @@
 
 // BYTE_ORDER
 #ifndef BYTE_ORDER
-#if defined(ARCH_X86) || defined(ARCH_X86_64) || \
-    defined(__ARMEL__) || defined(__AARCH64EL__)
-#define BYTE_ORDER      LITTLE_ENDIAN
-#elif defined(__ARMEB__) || defined(__AARCH64EB__)
-#define BYTE_ORDER      BIG_ENDIAN
+#if defined(__BYTE_ORDER)
+    #define BYTE_ORDER  __BYTE_ORDER
+#elif defined(__BYTE_ORDER__)
+    #define BYTE_ORDER  __BYTE_ORDER__
+#elif defined(ARCH_X86)  || defined(ARCH_X86_64)   || \
+      defined(__ARMEL__) || defined(__AARCH64EL__) || \
+      defined(__MIPSEL)  || defined(__MIPS64EL)
+    #define BYTE_ORDER  LITTLE_ENDIAN
+#elif defined(__ARMEB__) || defined(__AARCH64EB__) || \
+      defined(__MIPSEB)  || defined(__MIPS64EB) || \
+      defined(__ppc__)   || defined(__ppc64__)
+    #define BYTE_ORDER  BIG_ENDIAN
+#elif defined(OS_WIN)
+    #define BYTE_ORDER  LITTLE_ENDIAN
+#else
+    #warning "Unknown byte order!"
 #endif
 #endif
 

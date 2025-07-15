@@ -1,5 +1,5 @@
 /*
- * tinyhttpd
+ * tinyhttpd tiny http server
  *
  * @build    make examples
  *
@@ -34,7 +34,8 @@ static hloop_t*  accept_loop = NULL;
 static hloop_t** worker_loops = NULL;
 
 #define HTTP_KEEPALIVE_TIMEOUT  60000 // ms
-#define HTTP_HEAD_MAX_LENGTH    1024
+#define HTTP_MAX_URL_LENGTH     256
+#define HTTP_MAX_HEAD_LENGTH    1024
 
 #define HTML_TAG_BEGIN  "<html><body><center><h1>"
 #define HTML_TAG_END    "</h1></center></body></html>"
@@ -67,7 +68,7 @@ typedef struct {
         // request line
         struct {
             char method[32];
-            char path[256];
+            char path[HTTP_MAX_URL_LENGTH];
         };
         // status line
         struct {
@@ -76,11 +77,15 @@ typedef struct {
         };
     };
     // headers
+    char        host[64];
     int         content_length;
     char        content_type[64];
     unsigned    keepalive:  1;
+//  char        head[HTTP_MAX_HEAD_LENGTH];
+//  int         head_len;
     // body
-    const char* body; // body_len = content_length
+    char*       body;
+    int         body_len; // body_len = content_length
 } http_msg_t;
 
 typedef struct {
@@ -88,6 +93,9 @@ typedef struct {
     http_state_e    state;
     http_msg_t      request;
     http_msg_t      response;
+    // for http_serve_file
+    FILE*           fp;
+    hbuf_t          filebuf;
 } http_conn_t;
 
 static char s_date[32] = {0};
@@ -126,29 +134,52 @@ static int http_reply(http_conn_t* conn,
             int status_code, const char* status_message,
             const char* content_type,
             const char* body, int body_len) {
-    char stackbuf[HTTP_HEAD_MAX_LENGTH + 1024] = {0};
-    char* buf = stackbuf;
-    int buflen = sizeof(stackbuf);
     http_msg_t* req  = &conn->request;
     http_msg_t* resp = &conn->response;
     resp->major_version = req->major_version;
     resp->minor_version = req->minor_version;
     resp->status_code = status_code;
-    if (status_message) strcpy(resp->status_message, status_message);
-    if (content_type)   strcpy(resp->content_type, content_type);
+    if (status_message) strncpy(resp->status_message, status_message, sizeof(req->status_message) - 1);
+    if (content_type)   strncpy(resp->content_type, content_type, sizeof(req->content_type) - 1);
     resp->keepalive = req->keepalive;
     if (body) {
         if (body_len <= 0) body_len = strlen(body);
         resp->content_length = body_len;
-        resp->body = body;
+        resp->body = (char*)body;
     }
-    if (resp->content_length > buflen - HTTP_HEAD_MAX_LENGTH) {
-        HV_ALLOC(buf, HTTP_HEAD_MAX_LENGTH + resp->content_length);
-    }
-    int msglen = http_response_dump(resp, buf, buflen);
+    char* buf = NULL;
+    STACK_OR_HEAP_ALLOC(buf, HTTP_MAX_HEAD_LENGTH + resp->content_length, HTTP_MAX_HEAD_LENGTH + 1024);
+    int msglen = http_response_dump(resp, buf, HTTP_MAX_HEAD_LENGTH + resp->content_length);
     int nwrite = hio_write(conn->io, buf, msglen);
-    if (buf != stackbuf) HV_FREE(buf);
+    STACK_OR_HEAP_FREE(buf);
     return nwrite < 0 ? nwrite : msglen;
+}
+
+static void http_send_file(http_conn_t* conn) {
+    if (!conn || !conn->fp) return;
+    // alloc filebuf
+    if (!conn->filebuf.base) {
+        conn->filebuf.len = 4096;
+        HV_ALLOC(conn->filebuf, conn->filebuf.len);
+    }
+    char* filebuf = conn->filebuf.base;
+    size_t filebuflen = conn->filebuf.len;
+    // read file
+    int nread = fread(filebuf, 1, filebuflen, conn->fp);
+    if (nread <= 0) {
+        // eof or error
+        hio_close(conn->io);
+        return;
+    }
+    // send file
+    hio_write(conn->io, filebuf, nread);
+}
+
+static void on_write(hio_t* io, const void* buf, int writebytes) {
+    if (!io) return;
+    if (!hio_write_is_complete(io)) return;
+    http_conn_t* conn = (http_conn_t*)hevent_userdata(io);
+    http_send_file(conn);
 }
 
 static int http_serve_file(http_conn_t* conn) {
@@ -160,12 +191,12 @@ static int http_serve_file(http_conn_t* conn) {
     if (*filepath == '\0') {
         filepath = "index.html";
     }
-    FILE* fp = fopen(filepath, "rb");
-    if (!fp) {
+    // open file
+    conn->fp = fopen(filepath, "rb");
+    if (!conn->fp) {
         http_reply(conn, 404, NOT_FOUND, TEXT_HTML, HTML_TAG_BEGIN NOT_FOUND HTML_TAG_END, 0);
         return 404;
     }
-    char buf[4096] = {0};
     // send head
     size_t filesize = hv_filesize(filepath);
     resp->content_length = filesize;
@@ -176,22 +207,9 @@ static int http_serve_file(http_conn_t* conn) {
     } else {
         // TODO: set content_type by suffix
     }
+    hio_setcb_write(conn->io, on_write);
     int nwrite = http_reply(conn, 200, "OK", content_type, NULL, 0);
     if (nwrite < 0) return nwrite; // disconnected
-    // send file
-    int nread = 0;
-    while (1) {
-        nread = fread(buf, 1, sizeof(buf), fp);
-        if (nread <= 0) break;
-        nwrite = hio_write(conn->io, buf, nread);
-        if (nwrite < 0) return nwrite; // disconnected
-        if (nwrite == 0) {
-            // send too fast or peer recv too slow
-            // WARN: too large file should control sending rate, just delay a while in the demo!
-            hv_delay(10);
-        }
-    }
-    fclose(fp);
     return 200;
 }
 
@@ -220,13 +238,13 @@ static bool parse_http_head(http_conn_t* conn, char* buf, int len) {
     if (stricmp(key, "Content-Length") == 0) {
         req->content_length = atoi(val);
     } else if (stricmp(key, "Content-Type") == 0) {
-        strcpy(req->content_type, val);
+        strncpy(req->content_type, val, sizeof(req->content_type) - 1);
     } else if (stricmp(key, "Connection") == 0) {
         if (stricmp(val, "close") == 0) {
             req->keepalive = 0;
         }
     } else {
-        // TODO: save head
+        // TODO: save other head
     }
     return true;
 }
@@ -262,6 +280,13 @@ static void on_close(hio_t* io) {
     // printf("on_close fd=%d error=%d\n", hio_fd(io), hio_error(io));
     http_conn_t* conn = (http_conn_t*)hevent_userdata(io);
     if (conn) {
+        if (conn->fp) {
+            // close file
+            fclose(conn->fp);
+            conn->fp = NULL;
+        }
+        // free filebuf
+        HV_FREE(conn->filebuf.base);
         HV_FREE(conn);
         hevent_set_userdata(io, NULL);
     }
@@ -328,7 +353,8 @@ static void on_recv(hio_t* io, void* buf, int readbytes) {
     case s_body:
         // printf("s_body\n");
         req->body = str;
-        if (readbytes == req->content_length) {
+        req->body_len += readbytes;
+        if (req->body_len == req->content_length) {
             conn->state = s_end;
         } else {
             // WARN: too large content_length should be handled by streaming!
@@ -404,13 +430,13 @@ static void on_accept(hio_t* io) {
     hloop_post_event(worker_loop, &ev);
 }
 
-static HTHREAD_RETTYPE worker_thread(void* userdata) {
+static HTHREAD_ROUTINE(worker_thread) {
     hloop_t* loop = (hloop_t*)userdata;
     hloop_run(loop);
     return 0;
 }
 
-static HTHREAD_RETTYPE accept_thread(void* userdata) {
+static HTHREAD_ROUTINE(accept_thread) {
     hloop_t* loop = (hloop_t*)userdata;
     hio_t* listenio = hloop_create_tcp_server(loop, host, port, on_accept);
     if (listenio == NULL) {

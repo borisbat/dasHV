@@ -1,6 +1,7 @@
 #ifndef HV_ASYNC_HTTP_CLIENT_H_
 #define HV_ASYNC_HTTP_CLIENT_H_
 
+#include <map>
 #include <list>
 
 #include "EventLoopThread.h"
@@ -8,11 +9,6 @@
 
 #include "HttpMessage.h"
 #include "HttpParser.h"
-
-#define DEFAULT_FAIL_RETRY_COUNT  3
-#define DEFAULT_FAIL_RETRY_DELAY  1000  // ms
-
-// async => keepalive => connect_pool
 
 namespace hv {
 
@@ -55,10 +51,7 @@ private:
 struct HttpClientTask {
     HttpRequestPtr          req;
     HttpResponseCallback    cb;
-
-    uint64_t    start_time;
-    int         retry_cnt;
-    int         retry_delay;
+    uint64_t                start_time;
 };
 typedef std::shared_ptr<HttpClientTask> HttpClientTaskPtr;
 
@@ -72,18 +65,25 @@ struct HttpClientContext {
     HttpClientContext() {
         timerID = INVALID_TIMER_ID;
     }
+
     ~HttpClientContext() {
+        cancelTimer();
+    }
+
+    void cancelTimer() {
         if (timerID != INVALID_TIMER_ID) {
             killTimer(timerID);
             timerID = INVALID_TIMER_ID;
         }
     }
 
+    void cancelTask() {
+        cancelTimer();
+        task = NULL;
+    }
+
     void callback() {
-        if (timerID != INVALID_TIMER_ID) {
-            killTimer(timerID);
-            timerID = INVALID_TIMER_ID;
-        }
+        cancelTimer();
         if (task && task->cb) {
             task->cb(resp);
         }
@@ -102,29 +102,21 @@ struct HttpClientContext {
     }
 };
 
-class AsyncHttpClient {
+class HV_EXPORT AsyncHttpClient : private EventLoopThread {
 public:
-    AsyncHttpClient() {
-        loop_thread.start(true);
+    AsyncHttpClient(EventLoopPtr loop = NULL) : EventLoopThread(loop) {
+        if (loop == NULL) {
+            EventLoopThread::start(true);
+        }
     }
     ~AsyncHttpClient() {
-        // NOTE: ~EventLoopThread will stop and join
-        // loop_thread.stop(true);
+        EventLoopThread::stop(true);
     }
 
     // thread-safe
-    int send(const HttpRequestPtr& req, HttpResponseCallback resp_cb) {
-        HttpClientTaskPtr task(new HttpClientTask);
-        task->req = req;
-        task->cb = std::move(resp_cb);
-        task->start_time = hloop_now_hrtime(loop_thread.hloop());
-        task->retry_delay = DEFAULT_FAIL_RETRY_DELAY;
-        task->retry_cnt = MIN(DEFAULT_FAIL_RETRY_COUNT, req->timeout * 1000 / task->retry_delay - 1);
-        return send(task);
-    }
-
+    int send(const HttpRequestPtr& req, HttpResponseCallback resp_cb);
     int send(const HttpClientTaskPtr& task) {
-        loop_thread.loop()->queueInLoop(std::bind(&AsyncHttpClient::sendInLoop, this, task));
+        EventLoopThread::loop()->queueInLoop(std::bind(&AsyncHttpClient::sendInLoop, this, task));
         return 0;
     }
 
@@ -146,7 +138,7 @@ protected:
     }
 
     const SocketChannelPtr& addChannel(hio_t* io) {
-        SocketChannelPtr channel(new SocketChannel(io));
+        auto channel = std::make_shared<SocketChannel>(io);
         channel->newContext<HttpClientContext>();
         int fd = channel->fd();
         channels[fd] = channel;
@@ -165,7 +157,6 @@ private:
     std::map<int, SocketChannelPtr>         channels;
     // peeraddr => ConnPool
     std::map<std::string, ConnPool<int>>    conn_pools;
-    EventLoopThread                         loop_thread;
 };
 
 }

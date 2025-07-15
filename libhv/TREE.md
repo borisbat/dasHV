@@ -7,7 +7,7 @@
 ├── build       cmake默认构建目录
 ├── cert        SSL证书存放目录
 ├── cmake       cmake脚本存放目录
-├── cpputil     libhv工具类，如命令行解析、json解析、ini解析
+├── cpputil     libhv工具类，如字符串、文件、路径、线程池、json解析、ini解析
 ├── docs        文档存放目录
 ├── echo-servers 包含libevent、libev、libuv、libhv、asio、poco、muduo等多个网络库的tcp echo server写法，并做压力测试
 ├── etc         应用程序配置目录
@@ -26,6 +26,7 @@
 ├── lib         库文件安装目录
 ├── logs        日志生成目录
 ├── misc        杂项
+├── mqtt        MQTT协议
 ├── protocol    包含icmp、dns、ftp、smtp等协议的实现
 ├── scripts     shell脚本存放目录
 ├── ssl         SSL/TLS加密通信

@@ -762,20 +762,19 @@ const char* hssl_backend() {
 }
 
 typedef struct appletls_ctx {
-    SecIdentityRef cert;
-    hssl_ctx_init_param_t* param;
+    SecIdentityRef  cert;
+    hssl_ctx_opt_t* param;
 } appletls_ctx_t;
 
-hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
+hssl_ctx_t hssl_ctx_new(hssl_ctx_opt_t* param) {
     appletls_ctx_t* ctx = (appletls_ctx_t*)malloc(sizeof(appletls_ctx_t));
     if (ctx == NULL) return NULL;
     ctx->cert = NULL;
     ctx->param = param;
-    g_ssl_ctx = ctx;
     return ctx;
 }
 
-void hssl_ctx_cleanup(hssl_ctx_t ssl_ctx) {
+void hssl_ctx_free(hssl_ctx_t ssl_ctx) {
     if (ssl_ctx == NULL) return;
     appletls_ctx_t* ctx = (appletls_ctx_t*)ssl_ctx;
     if (ctx->cert) {
@@ -890,9 +889,10 @@ static int hssl_init(hssl_t ssl, int endpoint) {
         return HSSL_ERROR;
     }
 
-    ret = SSLSetProtocolVersionEnabled(appletls->session, kSSLProtocolAll, true);
+    // ret = SSLSetProtocolVersionEnabled(appletls->session, kSSLProtocolAll, true);
+    ret = SSLSetProtocolVersionMin(appletls->session, kTLSProtocol12);
     if (ret != noErr) {
-        fprintf(stderr, "SSLSetProtocolVersionEnabled failed!\n");
+        fprintf(stderr, "SSLSetProtocolVersionMin failed!\n");
         return HSSL_ERROR;
     }
 

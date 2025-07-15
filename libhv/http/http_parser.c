@@ -1335,6 +1335,12 @@ reexecute:
                 parser->header_state = h_general;
               } else if (parser->index == sizeof(TRANSFER_ENCODING)-2) {
                 parser->header_state = h_transfer_encoding;
+                /* Multiple `Transfer-Encoding` headers should be treated as
+                 * one, but with values separate by a comma.
+                 *
+                 * See: https://tools.ietf.org/html/rfc7230#section-3.2.2
+                 */
+                parser->flags &= ~F_CHUNKED;
               }
               break;
 
@@ -2154,6 +2160,7 @@ http_errno_description(enum http_errno err) {
   return http_strerror_tab[err].description;
 }
 
+#ifdef WITH_HTTP_PRASER_URL
 static enum http_host_state
 http_parse_host_char(enum http_host_state s, const char ch) {
   switch(s) {
@@ -2445,6 +2452,7 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
 
   return 0;
 }
+#endif
 
 void
 http_parser_pause(http_parser *parser, int paused) {

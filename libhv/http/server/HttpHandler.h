@@ -8,35 +8,6 @@
 #include "WebSocketServer.h"
 #include "WebSocketParser.h"
 
-class WebSocketHandler {
-public:
-    WebSocketChannelPtr         channel;
-    WebSocketParserPtr          parser;
-    uint64_t                    last_send_ping_time;
-    uint64_t                    last_recv_pong_time;
-
-    WebSocketHandler() {
-        last_send_ping_time = 0;
-        last_recv_pong_time = 0;
-    }
-
-    void Init(hio_t* io = NULL, ws_session_type type = WS_SERVER) {
-        parser.reset(new WebSocketParser);
-        if (io) {
-            channel.reset(new hv::WebSocketChannel(io, type));
-        }
-    }
-
-    void onopen() {
-        channel->status = hv::SocketChannel::CONNECTED;
-    }
-
-    void onclose() {
-        channel->status = hv::SocketChannel::DISCONNECTED;
-    }
-};
-typedef std::shared_ptr<WebSocketHandler> WebSocketHandlerPtr;
-
 class HttpHandler {
 public:
     enum ProtocolType {
@@ -45,6 +16,7 @@ public:
         HTTP_V2,
         WEBSOCKET,
     } protocol;
+
     enum State {
         WANT_RECV,
         HANDLE_BEGIN,
@@ -54,128 +26,161 @@ public:
         SEND_HEADER,
         SEND_BODY,
         SEND_DONE,
+        WANT_CLOSE,
     } state;
 
+    // errno
+    int                     error;
+
+    // flags
+    unsigned ssl                :1;
+    unsigned keepalive          :1;
+    unsigned upgrade            :1;
+    unsigned proxy              :1;
+    unsigned proxy_connected    :1;
+    unsigned forward_proxy      :1;
+    unsigned reverse_proxy      :1;
+
     // peeraddr
-    bool                    ssl;
     char                    ip[64];
     int                     port;
 
-    // for http
-    HttpService             *service;
-    FileCache               *files;
+    // for log
+    long                    pid;
+    long                    tid;
 
+    // for http
+    hio_t                   *io;
+    HttpService             *service;
     HttpRequestPtr          req;
     HttpResponsePtr         resp;
     HttpResponseWriterPtr   writer;
     HttpParserPtr           parser;
+    HttpContextPtr          ctx;
+    http_handler*           api_handler;
 
     // for GetSendData
-    file_cache_ptr          fc;
     std::string             header;
-    std::string             body;
+    // std::string          body;
 
     // for websocket
-    WebSocketHandlerPtr         ws;
-    WebSocketService*           ws_service;
+    WebSocketService*       ws_service;
+    WebSocketChannelPtr     ws_channel;
+    WebSocketParserPtr      ws_parser;
+    uint64_t                last_send_ping_time;
+    uint64_t                last_recv_pong_time;
 
-    HttpHandler() {
-        protocol = UNKNOWN;
-        state = WANT_RECV;
-        ssl = false;
-        service = NULL;
-        files = NULL;
-        ws_service = NULL;
-    }
+    // for sendfile
+    FileCache               *files;
+    file_cache_ptr          fc;     // cache small file
+    struct LargeFile : public HFile {
+        HBuf        buf;
+        uint64_t    timer;
+    }                       *file;  // for large file
 
-    ~HttpHandler() {
-        if (writer) {
-            writer->status = hv::SocketChannel::DISCONNECTED;
-        }
-    }
+    // for proxy
+    std::string             proxy_host;
+    int                     proxy_port;
 
-    bool Init(int http_version = 1, hio_t* io = NULL) {
-        parser.reset(HttpParser::New(HTTP_SERVER, (enum http_version)http_version));
-        if (parser == NULL) {
-            return false;
-        }
-        protocol = http_version == 1 ? HTTP_V1 : HTTP_V2;
-        req.reset(new HttpRequest);
-        resp.reset(new HttpResponse);
-        if (http_version == 2) {
-            req->http_major = 2;
-            req->http_minor = 0;
-            resp->http_major = 2;
-            resp->http_minor = 0;
-        }
-        parser->InitRequest(req.get());
-        if (io) {
-            writer.reset(new hv::HttpResponseWriter(io, resp));
-            writer->status = hv::SocketChannel::CONNECTED;
-        }
-        return true;
-    }
+    HttpHandler(hio_t* io = NULL);
+    ~HttpHandler();
 
-    bool SwitchHTTP2() {
-        parser.reset(HttpParser::New(HTTP_SERVER, ::HTTP_V2));
-        if (parser == NULL) {
-            return false;
-        }
-        protocol = HTTP_V2;
-        req->http_major = 2;
-        req->http_minor = 0;
-        resp->http_major = 2;
-        resp->http_minor = 0;
-        parser->InitRequest(req.get());
-        return true;
-    }
+    bool Init(int http_version = 1);
+    void Reset();
+    void Close();
 
-    void Reset() {
-        state = WANT_RECV;
-        req->Reset();
-        resp->Reset();
-        parser->InitRequest(req.get());
-        if (writer) {
-            writer->Begin();
-        }
-    }
-
+    /* @workflow:
+     * HttpServer::on_recv -> HttpHandler::FeedRecvData -> Init -> HttpParser::InitRequest -> HttpRequest::http_cb ->
+     * onHeadersComplete -> proxy ? handleProxy -> connectProxy :
+     * onMessageComplete -> upgrade ? handleUpgrade : HandleHttpRequest -> HttpParser::SubmitResponse ->
+     * SendHttpResponse -> while(GetSendData) hio_write ->
+     * keepalive ? Reset : Close -> hio_close
+     *
+     * @return
+     * == len:   ok
+     * == 0:     WANT_CLOSE
+     * <  0:     error
+     */
     int FeedRecvData(const char* data, size_t len);
-    // @workflow: preprocessor -> api -> web -> postprocessor
-    // @result: HttpRequest -> HttpResponse/file_cache_t
+
+    /* @workflow:
+     * preprocessor -> middleware -> processor -> postprocessor
+     *
+     * @return status_code
+     * == 0:    HANDLE_CONTINUE
+     * != 0:    HANDLE_END
+     */
     int HandleHttpRequest();
+
     int GetSendData(char** data, size_t* len);
 
+    int SendHttpResponse(bool submit = true);
+    int SendHttpStatusResponse(http_status status_code);
+
+    // HTTP2
+    bool SwitchHTTP2();
+
     // websocket
-    WebSocketHandler* SwitchWebSocket() {
-        ws.reset(new WebSocketHandler);
-        protocol = WEBSOCKET;
-        return ws.get();
-    }
+    bool SwitchWebSocket();
     void WebSocketOnOpen() {
-        ws->onopen();
+        ws_channel->status = hv::SocketChannel::CONNECTED;
         if (ws_service && ws_service->onopen) {
-            ws_service->onopen(ws->channel, req->url);
+            ws_service->onopen(ws_channel, req);
         }
     }
     void WebSocketOnClose() {
-        ws->onclose();
+        ws_channel->status = hv::SocketChannel::DISCONNECTED;
         if (ws_service && ws_service->onclose) {
-            ws_service->onclose(ws->channel);
-        }
-    }
-    void WebSocketOnMessage(const std::string& msg) {
-        if (ws_service && ws_service->onmessage) {
-            ws_service->onmessage(ws->channel, msg);
+            ws_service->onclose(ws_channel);
         }
     }
 
+    int SetError(int error_code, http_status status_code = HTTP_STATUS_BAD_REQUEST) {
+        error = error_code;
+        if (resp) resp->status_code = status_code;
+        return error;
+    }
+
 private:
+    const HttpContextPtr& context();
+    void  handleRequestHeaders();
+    // Expect: 100-continue
+    void  handleExpect100();
+    void  addResponseHeaders();
+
+    // http_cb
+    void onHeadersComplete();
+    void onBody(const char* data, size_t size);
+    void onMessageComplete();
+
+    // default handlers
     int defaultRequestHandler();
     int defaultStaticHandler();
+    int defaultLargeFileHandler(const std::string &filepath);
     int defaultErrorHandler();
     int customHttpHandler(const http_handler& handler);
     int invokeHttpHandler(const http_handler* handler);
+
+    // sendfile
+    int  openFile(const char* filepath);
+    int  sendFile();
+    void closeFile();
+    bool isFileOpened();
+
+    // upgrade
+    int handleUpgrade(const char* upgrade_protocol);
+    int upgradeWebSocket();
+    int upgradeHTTP2();
+
+    // proxy
+    int handleProxy();
+    int handleForwardProxy();
+    int handleReverseProxy();
+    int connectProxy(const std::string& url);
+    int closeProxy();
+    int sendProxyRequest();
+    static void onProxyConnect(hio_t* upstream_io);
+    static void onProxyClose(hio_t* upstream_io);
 };
 
 #endif // HV_HTTP_HANDLER_H_

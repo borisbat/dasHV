@@ -4,7 +4,7 @@
 
 #include <string.h>
 
-using namespace hv;
+BEGIN_NAMESPACE_HV
 
 std::string dump_query_params(const QueryParams& query_params) {
     std::string query_string;
@@ -12,9 +12,9 @@ std::string dump_query_params(const QueryParams& query_params) {
         if (query_string.size() != 0) {
             query_string += '&';
         }
-        query_string += url_escape(pair.first.c_str());
+        query_string += HUrl::escape(pair.first);
         query_string += '=';
-        query_string += url_escape(pair.second.c_str());
+        query_string += HUrl::escape(pair.second);
     }
     return query_string;
 }
@@ -34,16 +34,16 @@ int parse_query_params(const char* query_string, QueryParams& query_params) {
     int value_len = 0;
     while (*p != '\0') {
         if (*p == '&') {
-            if (key_len && value_len) {
+            if (key_len /* && value_len */) {
                 std::string strkey = std::string(key, key_len);
                 std::string strvalue = std::string(value, value_len);
-                query_params[url_unescape(strkey.c_str())] = url_unescape(strvalue.c_str());
+                query_params[HUrl::unescape(strkey)] = HUrl::unescape(strvalue);
                 key_len = value_len = 0;
             }
             state = s_key;
             key = p+1;
         }
-        else if (*p == '=') {
+        else if (*p == '=' && state == s_key) {
             state = s_value;
             value = p+1;
         }
@@ -52,10 +52,10 @@ int parse_query_params(const char* query_string, QueryParams& query_params) {
         }
         ++p;
     }
-    if (key_len && value_len) {
+    if (key_len /* && value_len */) {
         std::string strkey = std::string(key, key_len);
         std::string strvalue = std::string(value, value_len);
-        query_params[url_unescape(strkey.c_str())] = url_unescape(strvalue.c_str());
+        query_params[HUrl::unescape(strkey)] = HUrl::unescape(strvalue);
         key_len = value_len = 0;
     }
     return query_params.size() == 0 ? -1 : 0;
@@ -70,6 +70,7 @@ int parse_query_params(const char* query_string, QueryParams& query_params) {
 std::string dump_multipart(MultiPart& mp, const char* boundary) {
     char c_str[256] = {0};
     std::string str;
+    if (mp.empty()) return str;
     for (auto& pair : mp) {
         str += "--";
         str += boundary;
@@ -103,7 +104,7 @@ std::string dump_multipart(MultiPart& mp, const char* boundary) {
     }
     str += "--";
     str += boundary;
-    str += "--";
+    str += "--\r\n";
     return str;
 }
 
@@ -234,6 +235,7 @@ int parse_multipart(const std::string& str, MultiPart& mp, const char* boundary)
 }
 
 std::string dump_json(const hv::Json& json, int indent) {
+    if (json.empty()) return "";
     return json.dump(indent);
 }
 
@@ -248,3 +250,5 @@ int parse_json(const char* str, hv::Json& json, std::string& errmsg) {
     return (json.is_discarded() || json.is_null()) ? -1 : 0;
 }
 #endif
+
+END_NAMESPACE_HV

@@ -19,10 +19,10 @@ static hloop_t** worker_loops = NULL;
 
 static hloop_t* get_next_loop() {
     static int s_cur_index = 0;
-    if (s_cur_index == thread_num) {
+    if (++s_cur_index >= thread_num) {
         s_cur_index = 0;
     }
-    return worker_loops[s_cur_index++];
+    return worker_loops[s_cur_index % thread_num];
 }
 
 static void on_close(hio_t* io) {
@@ -64,13 +64,13 @@ static void on_accept(hio_t* io) {
     hloop_post_event(worker_loop, &ev);
 }
 
-static HTHREAD_RETTYPE worker_thread(void* userdata) {
+static HTHREAD_ROUTINE(worker_thread) {
     hloop_t* loop = (hloop_t*)userdata;
     hloop_run(loop);
     return 0;
 }
 
-static HTHREAD_RETTYPE accept_thread(void* userdata) {
+static HTHREAD_ROUTINE(accept_thread) {
     hloop_t* loop = (hloop_t*)userdata;
     hio_t* listenio = hloop_create_tcp_server(loop, host, port, on_accept);
     if (listenio == NULL) {

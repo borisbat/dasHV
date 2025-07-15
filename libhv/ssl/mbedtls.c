@@ -1,13 +1,14 @@
 #include "hssl.h"
+#include "hsocket.h"
 
 #ifdef WITH_MBEDTLS
 
+#include "mbedtls/version.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
-#include "mbedtls/certs.h"
 #include "mbedtls/x509.h"
 #include "mbedtls/ssl.h"
-#include "mbedtls/net.h"
+#include "mbedtls/net_sockets.h"
 #include "mbedtls/error.h"
 #include "mbedtls/debug.h"
 
@@ -36,7 +37,7 @@ struct mbedtls_ctx {
 #endif
 };
 
-hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
+hssl_ctx_t hssl_ctx_new(hssl_ctx_opt_t* param) {
     struct mbedtls_ctx* ctx = (struct mbedtls_ctx*)malloc(sizeof(struct mbedtls_ctx));
     if (ctx == NULL) return NULL;
 
@@ -60,7 +61,11 @@ hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
             }
         }
         if (param->key_file && *param->key_file) {
+#if MBEDTLS_VERSION_MAJOR >= 3
+            if (mbedtls_pk_parse_keyfile(&ctx->pkey, param->key_file, NULL, NULL, NULL) != 0) {
+#else
             if (mbedtls_pk_parse_keyfile(&ctx->pkey, param->key_file, NULL) != 0) {
+#endif
                 fprintf(stderr, "ssl key_file error!\n");
                 goto error;
             }
@@ -93,19 +98,14 @@ hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
             goto error;
         }
     }
-
-    g_ssl_ctx = ctx;
     return ctx;
 error:
     free(ctx);
     return NULL;
 }
 
-void hssl_ctx_cleanup(hssl_ctx_t ssl_ctx) {
+void hssl_ctx_free(hssl_ctx_t ssl_ctx) {
     if (!ssl_ctx) return;
-    if (g_ssl_ctx == ssl_ctx) {
-        g_ssl_ctx = NULL;
-    }
     struct mbedtls_ctx *mctx = (struct mbedtls_ctx *)ssl_ctx;
     mbedtls_x509_crt_free(&mctx->cert);
     mbedtls_pk_free(&mctx->pkey);
@@ -120,16 +120,18 @@ void hssl_ctx_cleanup(hssl_ctx_t ssl_ctx) {
 
 static int __mbedtls_net_send(void *ctx, const unsigned char *buf, size_t len) {
     int fd = (intptr_t)ctx;
-    int n = write(fd, buf, len);
+    // int n = write(fd, buf, len);
+    int n = send(fd, (char*)(buf), (int)(len), 0);
     if (n >= 0) return n;
-    return ((errno == EAGAIN || errno == EINPROGRESS) ? MBEDTLS_ERR_SSL_WANT_WRITE : -1);
+    return ((socket_errno() == EAGAIN || socket_errno() == EINPROGRESS) ? MBEDTLS_ERR_SSL_WANT_WRITE : -1);
 }
 
 static int __mbedtls_net_recv(void *ctx, unsigned char *buf, size_t len) {
     int fd = (intptr_t)ctx;
-    int n = read(fd, buf, len);
+    // int n = read(fd, buf, len);
+    int n = recv(fd, (char*)(buf), (int)(len), 0);
     if (n >= 0) return n;
-    return ((errno == EAGAIN || errno == EINPROGRESS) ? MBEDTLS_ERR_SSL_WANT_READ : -1);
+    return ((socket_errno() == EAGAIN || socket_errno() == EINPROGRESS) ? MBEDTLS_ERR_SSL_WANT_READ : -1);
 }
 
 hssl_t hssl_new(hssl_ctx_t ssl_ctx, int fd) {

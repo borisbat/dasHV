@@ -1,16 +1,22 @@
 #include "router.h"
 
 #include "handler.h"
-#include "hthread.h"
+#include "hthread.h"    // import hv_gettid
 #include "hasync.h"     // import hv::async
 #include "requests.h"   // import requests::async
 
 void Router::Register(hv::HttpService& router) {
-    // preprocessor => Handler => postprocessor
+    /* handler chain */
+    // headerHandler -> preprocessor -> middleware -> processor -> postprocessor
+    // processor: pathHandlers -> staticHandler -> errorHandler
+    router.headerHandler = Handler::headerHandler;
     router.preprocessor = Handler::preprocessor;
     router.postprocessor = Handler::postprocessor;
-    router.largeFileHandler = Handler::largeFileHandler;
     // router.errorHandler = Handler::errorHandler;
+    // router.largeFileHandler = Handler::sendLargeFile;
+
+    // middleware
+    // router.Use(Handler::Authorization);
 
     // curl -v http://ip:port/ping
     router.GET("/ping", [](HttpRequest* req, HttpResponse* resp) {
@@ -33,15 +39,6 @@ void Router::Register(hv::HttpService& router) {
         return resp->Json(router.Paths());
     });
 
-    // curl -v http://ip:port/get?env=1
-    router.GET("/get", [](HttpRequest* req, HttpResponse* resp) {
-        resp->json["origin"] = req->client_addr.ip;
-        resp->json["url"] = req->url;
-        resp->json["args"] = req->query_params;
-        resp->json["headers"] = req->headers;
-        return 200;
-    });
-
     // curl -v http://ip:port/service
     router.GET("/service", [](const HttpContextPtr& ctx) {
         ctx->setContentType("application/json");
@@ -51,6 +48,16 @@ void Router::Register(hv::HttpService& router) {
         ctx->set("error_page", ctx->service->error_page);
         ctx->set("index_of", ctx->service->index_of);
         return 200;
+    });
+
+    // curl -v http://ip:port/get?env=1
+    router.GET("/get", [](const HttpContextPtr& ctx) {
+        hv::Json resp;
+        resp["origin"] = ctx->ip();
+        resp["url"] = ctx->url();
+        resp["args"] = ctx->params();
+        resp["headers"] = ctx->headers();
+        return ctx->send(resp.dump(2));
     });
 
     // curl -v http://ip:port/echo -d "hello,world!"
@@ -67,19 +74,17 @@ void Router::Register(hv::HttpService& router) {
 
     // curl -v http://ip:port/async
     router.GET("/async", [](const HttpRequestPtr& req, const HttpResponseWriterPtr& writer) {
-        writer->WriteHeader("X-Request-tid", hv_gettid());
-        hv::async([req, writer](){
-            writer->WriteHeader("X-Response-tid", hv_gettid());
-            writer->WriteHeader("Content-Type", "text/plain");
-            writer->WriteBody("This is an async response.\n");
-            writer->End();
-        });
+        writer->Begin();
+        writer->WriteHeader("X-Response-tid", hv_gettid());
+        writer->WriteHeader("Content-Type", "text/plain");
+        writer->WriteBody("This is an async response.\n");
+        writer->End();
     });
 
     // curl -v http://ip:port/www.*
     // curl -v http://ip:port/www.example.com
     router.GET("/www.*", [](const HttpRequestPtr& req, const HttpResponseWriterPtr& writer) {
-        HttpRequestPtr req2(new HttpRequest);
+        auto req2 = std::make_shared<HttpRequest>();
         req2->url = req->path.substr(1);
         requests::async(req2, [writer](const HttpResponsePtr& resp2){
             writer->Begin();
@@ -112,12 +117,12 @@ void Router::Register(hv::HttpService& router) {
     router.POST("/json", Handler::json);
 
     // Content-Type: multipart/form-data
-    // bin/curl -v http://ip:port/form -F "user=admin pswd=123456"
+    // bin/curl -v http://ip:port/form -F 'user=admin' -F 'pswd=123456'
     router.POST("/form", Handler::form);
 
     // curl -v http://ip:port/test -H "Content-Type:application/x-www-form-urlencoded" -d 'bool=1&int=123&float=3.14&string=hello'
     // curl -v http://ip:port/test -H "Content-Type:application/json" -d '{"bool":true,"int":123,"float":3.14,"string":"hello"}'
-    // bin/curl -v http://ip:port/test -F 'bool=1 int=123 float=3.14 string=hello'
+    // bin/curl -v http://ip:port/test -F 'bool=1' -F 'int=123' -F 'float=3.14' -F 'string=hello'
     router.POST("/test", Handler::test);
 
     // Content-Type: application/grpc
@@ -132,7 +137,13 @@ void Router::Register(hv::HttpService& router) {
     // curl -v http://ip:port/login -H "Content-Type:application/json" -d '{"username":"admin","password":"123456"}'
     router.POST("/login", Handler::login);
 
-    // curl -v http://ip:port/upload -d "hello,world!"
-    // curl -v http://ip:port/upload -F "file=@LICENSE"
+    // curl -v http://ip:port/upload?filename=LICENSE -d '@LICENSE'
+    // curl -v http://ip:port/upload -F 'file=@LICENSE'
     router.POST("/upload", Handler::upload);
+    // curl -v http://ip:port/upload/README.md -d '@README.md'
+    router.POST("/upload/{filename}", Handler::recvLargeFile);
+
+    // SSE: Server Send Events
+    // @test html/EventSource.html EventSource.onmessage
+    router.GET("/sse", Handler::sse);
 }

@@ -1,5 +1,6 @@
 #include "http_page.h"
 #include "hdir.h"
+#include "hurl.h"
 
 #define AUTOINDEX_FILENAME_MAXLEN       50
 
@@ -24,8 +25,6 @@ void make_http_status_page(http_status status_code, std::string& page) {
 }
 
 void make_index_of_page(const char* dir, std::string& page, const char* url) {
-    std::list<hdir_t> dirs;
-    listdir(dir, dirs);
     char c_str[1024] = {0};
     snprintf(c_str, sizeof(c_str), R"(<!DOCTYPE html>
 <html>
@@ -35,26 +34,45 @@ void make_index_of_page(const char* dir, std::string& page, const char* url) {
 <body>
   <h1>Index of %s</h1>
   <hr>
-<pre>
 )", url, url);
     page += c_str;
+
+    page += "  <table border=\"0\">\n";
+    page += R"(    <tr>
+      <th align="left" width="30%">Name</th>
+      <th align="left" width="20%">Date</th>
+      <th align="left" width="20%">Size</th>
+    </tr>
+)";
+
+#define _ADD_TD_(page, td)  \
+    page += "      <td>";   \
+    page += td;             \
+    page += "</td>\n";      \
+
+    std::list<hdir_t> dirs;
+    listdir(dir, dirs);
+    std::string escaped_name;
     for (auto& item : dirs) {
         if (item.name[0] == '.' && item.name[1] == '\0') continue;
-        int len = strlen(item.name) + (item.type == 'd');
+        page += "    <tr>\n";
+        // fix CVE-2023-26146
+        escaped_name = hv::escapeHTML(item.name);
+        const char* filename = escaped_name.c_str();
+        size_t len = escaped_name.size() + (item.type == 'd');
         // name
         snprintf(c_str, sizeof(c_str), "<a href=\"%s%s\">%s%s</a>",
-                item.name,
+                filename,
                 item.type == 'd' ? "/" : "",
-                len < AUTOINDEX_FILENAME_MAXLEN ? item.name : std::string(item.name, item.name+AUTOINDEX_FILENAME_MAXLEN-4).append("...").c_str(),
+                len < AUTOINDEX_FILENAME_MAXLEN ? filename : std::string(filename, filename+AUTOINDEX_FILENAME_MAXLEN-4).append("...").c_str(),
                 item.type == 'd' ? "/" : "");
-        page += c_str;
-        if (strcmp(item.name, "..") != 0) {
+        _ADD_TD_(page, c_str)
+        if (strcmp(filename, "..") != 0) {
             // mtime
             struct tm* tm = localtime(&item.mtime);
-            snprintf(c_str, sizeof(c_str), "%04d-%02d-%02d %02d:%02d:%02d        ",
+            snprintf(c_str, sizeof(c_str), "%04d-%02d-%02d %02d:%02d:%02d",
                     tm->tm_year+1900, tm->tm_mon+1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
-            page += std::string(AUTOINDEX_FILENAME_MAXLEN - len, ' ');
-            page += c_str;
+            _ADD_TD_(page, c_str)
             // size
             if (item.type == 'd') {
                 page += '-';
@@ -74,13 +92,17 @@ void make_index_of_page(const char* dir, std::string& page, const char* url) {
                     hsize /= 1024.0f;
                     snprintf(c_str, sizeof(c_str), "%.1fG", hsize);
                 }
-                page += c_str;
+                _ADD_TD_(page, c_str)
             }
         }
-        page += "\r\n";
+        page += "    </tr>\n";
     }
-    page += R"(</pre>
+
+#undef _ADD_TD_
+
+    page += R"(  </table>
   <hr>
 </body>
-</html>)";
+</html>
+)";
 }

@@ -90,9 +90,10 @@ set(HTTP2_HEADERS
 )
 
 set(HTTP_CLIENT_HEADERS
-    http/client/http_client.h
+    http/client/HttpClient.h
     http/client/requests.h
     http/client/axios.h
+    http/client/AsyncHttpClient.h
     http/client/WebSocketClient.h)
 
 set(HTTP_SERVER_HEADERS
@@ -101,4 +102,9 @@ set(HTTP_SERVER_HEADERS
     http/server/HttpContext.h
     http/server/HttpResponseWriter.h
     http/server/WebSocketServer.h
+)
+
+set(MQTT_HEADERS
+    mqtt/mqtt_protocol.h
+    mqtt/mqtt_client.h
 )

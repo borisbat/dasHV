@@ -15,11 +15,11 @@ unsigned int gettick_ms() {
 #elif HAVE_CLOCK_GETTIME
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    return (unsigned int)ts.tv_sec * 1000 + (unsigned int)ts.tv_nsec / 1000000;
 #else
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (unsigned int)tv.tv_sec * 1000 + (unsigned int)tv.tv_usec / 1000;
 #endif
 }
 
@@ -51,32 +51,36 @@ unsigned long long gethrtime_us() {
 }
 
 datetime_t datetime_now() {
-    datetime_t  dt;
 #ifdef OS_WIN
     SYSTEMTIME tm;
     GetLocalTime(&tm);
-    dt.year     = tm.wYear;
-    dt.month    = tm.wMonth;
-    dt.day      = tm.wDay;
-    dt.hour     = tm.wHour;
-    dt.min      = tm.wMinute;
-    dt.sec      = tm.wSecond;
-    dt.ms       = tm.wMilliseconds;
+    datetime_t dt;
+    dt.year  = tm.wYear;
+    dt.month = tm.wMonth;
+    dt.day   = tm.wDay;
+    dt.hour  = tm.wHour;
+    dt.min   = tm.wMinute;
+    dt.sec   = tm.wSecond;
+    dt.ms    = tm.wMilliseconds;
+    return dt;
 #else
     struct timeval tv;
-    struct tm* tm = NULL;
     gettimeofday(&tv, NULL);
-    time_t tt = tv.tv_sec;
-    tm = localtime(&tt);
-
-    dt.year     = tm->tm_year + 1900;
-    dt.month    = tm->tm_mon  + 1;
-    dt.day      = tm->tm_mday;
-    dt.hour     = tm->tm_hour;
-    dt.min      = tm->tm_min;
-    dt.sec      = tm->tm_sec;
-    dt.ms       = tv.tv_usec/1000;
+    datetime_t dt = datetime_localtime(tv.tv_sec);
+    dt.ms = tv.tv_usec / 1000;
+    return dt;
 #endif
+}
+
+datetime_t datetime_localtime(time_t seconds) {
+    struct tm* tm = localtime(&seconds);
+    datetime_t dt;
+    dt.year  = tm->tm_year + 1900;
+    dt.month = tm->tm_mon  + 1;
+    dt.day   = tm->tm_mday;
+    dt.hour  = tm->tm_hour;
+    dt.min   = tm->tm_min;
+    dt.sec   = tm->tm_sec;
     return dt;
 }
 
@@ -86,12 +90,12 @@ time_t datetime_mktime(datetime_t* dt) {
     time(&ts);
     struct tm* ptm = localtime(&ts);
     memcpy(&tm, ptm, sizeof(struct tm));
-    tm.tm_year  = dt->year   - 1900;
-    tm.tm_mon   = dt->month  - 1;
-    tm.tm_mday  = dt->day;
-    tm.tm_hour  = dt->hour;
-    tm.tm_min   = dt->min;
-    tm.tm_sec   = dt->sec;
+    tm.tm_year = dt->year  - 1900;
+    tm.tm_mon  = dt->month - 1;
+    tm.tm_mday = dt->day;
+    tm.tm_hour = dt->hour;
+    tm.tm_min  = dt->min;
+    tm.tm_sec  = dt->sec;
     return mktime(&tm);
 }
 
@@ -250,7 +254,7 @@ time_t cron_next_timeout(int minute, int hour, int day, int week, int month) {
 
     tt_round = mktime(&tm);
     if (week >= 0) {
-        tt_round = tt + (week-tm.tm_wday)*SECONDS_PER_DAY;
+        tt_round += (week-tm.tm_wday)*SECONDS_PER_DAY;
     }
     if (tt_round > tt) {
         return tt_round;

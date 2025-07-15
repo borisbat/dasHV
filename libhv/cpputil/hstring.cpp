@@ -7,6 +7,9 @@
 
 namespace hv {
 
+std::string                         empty_string;
+std::map<std::string, std::string>  empty_map;
+
 std::string& toupper(std::string& str) {
     // std::transform(str.begin(), str.end(), str.begin(), ::toupper);
     char* p = (char*)str.c_str();
@@ -128,7 +131,7 @@ hv::KeyValue splitKV(const std::string& str, char kv_kv, char k_v) {
             state = s_key;
             key = p+1;
         }
-        else if (*p == k_v) {
+        else if (*p == k_v && state != s_value) {
             state = s_value;
             value = p+1;
         }
@@ -198,5 +201,50 @@ std::string replaceAll(const std::string& str, const std::string& find, const st
     }
     return res;
 }
+
+void NetAddr::from_string(const std::string& ipport) {
+    auto pos = ipport.find_last_of(':');
+    if (pos != std::string::npos) {
+        ip = trim_pairs(ipport.substr(0, pos), "[]");
+        std::string strPort = ipport.substr(pos + 1);
+        port = atoi(strPort.c_str());
+    } else if (ipport.find('.') != std::string::npos) {
+        ip = ipport;
+        port = 0;
+    } else {
+        port = atoi(ipport.c_str());
+    }
+}
+
+std::string NetAddr::to_string() {
+    return NetAddr::to_string(ip.c_str(), port);
+}
+
+std::string NetAddr::to_string(const char* ip, int port) {
+    const char* fmt = strchr(ip, ':') ? "[%s]:%d" : "%s:%d";
+    return hv::asprintf(fmt, ip, port);
+}
+
+#ifdef OS_WIN
+std::string wchar_to_string(const UINT codePage, const std::wstring &wstr) {
+  std::string str(4 * wstr.size() + 1, '\0');
+  str.resize(WideCharToMultiByte(
+    codePage, 0,
+    wstr.c_str(), wstr.size(),
+    const_cast<char*>(str.data()), str.size(),
+    NULL, NULL));
+  return str;
+}
+
+std::wstring string_to_wchar(const UINT codePage, const std::string &str) {
+  std::wstring wstr(2 * str.size() + 2, '\0');
+  wstr.resize(MultiByteToWideChar(
+    codePage, 0,
+    str.c_str(), str.size(),
+    const_cast<wchar_t*>(wstr.data()), wstr.size()));
+  return wstr;
+}
+
+#endif // OS_WIN
 
 } // end namespace hv

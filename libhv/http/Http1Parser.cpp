@@ -56,7 +56,9 @@ int on_status(http_parser* parser, const char *at, size_t length) {
 int on_header_field(http_parser* parser, const char *at, size_t length) {
     printd("on_header_field:%.*s\n", (int)length, at);
     Http1Parser* hp = (Http1Parser*)parser->data;
-    hp->handle_header();
+    if (hp->state != HP_HEADER_FIELD) {
+        hp->handle_header();
+    }
     hp->state = HP_HEADER_FIELD;
     hp->header_field.append(at, length);
     return 0;
@@ -75,9 +77,7 @@ int on_body(http_parser* parser, const char *at, size_t length) {
     // printd("on_body:%.*s\n", (int)length, at);
     Http1Parser* hp = (Http1Parser*)parser->data;
     hp->state = HP_BODY;
-    if (hp->parsed->body_cb) {
-        hp->parsed->body_cb(at, length);
-    } else {
+    if (hp->invokeHttpCb(at, length) != 0) {
         hp->parsed->body.append(at, length);
     }
     return 0;
@@ -87,6 +87,7 @@ int on_message_begin(http_parser* parser) {
     printd("on_message_begin\n");
     Http1Parser* hp = (Http1Parser*)parser->data;
     hp->state = HP_MESSAGE_BEGIN;
+    hp->invokeHttpCb();
     return 0;
 }
 
@@ -118,17 +119,15 @@ int on_headers_complete(http_parser* parser) {
     }
     iter = hp->parsed->headers.find("content-length");
     if (iter != hp->parsed->headers.end()) {
-        int content_length = atoi(iter->second.c_str());
+        size_t content_length = atoll(iter->second.c_str());
         hp->parsed->content_length = content_length;
-        int reserve_length = MIN(content_length + 1, MAX_CONTENT_LENGTH);
+        size_t reserve_length = MIN(content_length + 1, MAX_CONTENT_LENGTH);
         if ((!skip_body) && reserve_length > hp->parsed->body.capacity()) {
             hp->parsed->body.reserve(reserve_length);
         }
     }
     hp->state = HP_HEADERS_COMPLETE;
-    if (hp->parsed->head_cb) {
-        hp->parsed->head_cb(hp->parsed->headers);
-    }
+    hp->invokeHttpCb();
     return skip_body ? 1 : 0;
 }
 
@@ -136,18 +135,20 @@ int on_message_complete(http_parser* parser) {
     printd("on_message_complete\n");
     Http1Parser* hp = (Http1Parser*)parser->data;
     hp->state = HP_MESSAGE_COMPLETE;
+    hp->invokeHttpCb();
     return 0;
 }
 
 int on_chunk_header(http_parser* parser) {
     printd("on_chunk_header:%llu\n", parser->content_length);
     Http1Parser* hp = (Http1Parser*)parser->data;
-    hp->state = HP_CHUNK_HEADER;
     int chunk_size = parser->content_length;
     int reserve_size = MIN(chunk_size + 1, MAX_CONTENT_LENGTH);
     if (reserve_size > hp->parsed->body.capacity()) {
         hp->parsed->body.reserve(reserve_size);
     }
+    hp->state = HP_CHUNK_HEADER;
+    hp->invokeHttpCb(NULL, chunk_size);
     return 0;
 }
 
@@ -155,9 +156,6 @@ int on_chunk_complete(http_parser* parser) {
     printd("on_chunk_complete\n");
     Http1Parser* hp = (Http1Parser*)parser->data;
     hp->state = HP_CHUNK_COMPLETE;
-    if (hp->parsed->chunked_cb) {
-        hp->parsed->chunked_cb(hp->parsed->body.c_str(), hp->parsed->body.size());
-        hp->parsed->body.clear();
-    }
+    hp->invokeHttpCb();
     return 0;
 }

@@ -5,14 +5,16 @@
 
 class Handler {
 public:
-    // preprocessor => api_handlers => postprocessor
+    // headerHandler => preprocessor => middleware -> handlers => postprocessor
+    static int headerHandler(HttpRequest* req, HttpResponse* resp);
     static int preprocessor(HttpRequest* req, HttpResponse* resp);
     static int postprocessor(HttpRequest* req, HttpResponse* resp);
-
     static int errorHandler(const HttpContextPtr& ctx);
-    static int largeFileHandler(const HttpContextPtr& ctx);
 
-    static int sleep(const HttpContextPtr& ctx);
+    // middleware
+    static int Authorization(HttpRequest* req, HttpResponse* resp);
+
+    static int sleep(const HttpRequestPtr& req, const HttpResponseWriterPtr& writer);
     static int setTimeout(const HttpContextPtr& ctx);
     static int query(const HttpContextPtr& ctx);
 
@@ -26,6 +28,12 @@ public:
 
     static int login(const HttpContextPtr& ctx);
     static int upload(const HttpContextPtr& ctx);
+    // SSE: Server Send Events
+    static int sse(const HttpContextPtr& ctx);
+
+    // LargeFile
+    static int sendLargeFile(const HttpContextPtr& ctx);
+    static int recvLargeFile(const HttpContextPtr& ctx, http_parser_state state, const char* data, size_t size);
 
 private:
     static int response_status(HttpResponse* resp, int code = 200, const char* message = NULL) {
@@ -34,10 +42,14 @@ private:
         resp->Set("message", message);
         return code;
     }
+    static int response_status(const HttpResponseWriterPtr& writer, int code = 200, const char* message = NULL) {
+        response_status(writer->response.get(), code, message);
+        writer->End();
+        return code;
+    }
     static int response_status(const HttpContextPtr& ctx, int code = 200, const char* message = NULL) {
-        if (message == NULL) message = http_status_str((enum http_status)code);
-        ctx->set("code", code);
-        ctx->set("message", message);
+        response_status(ctx->response.get(), code, message);
+        ctx->send();
         return code;
     }
 };

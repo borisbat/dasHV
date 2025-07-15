@@ -32,7 +32,7 @@
 - CR, LF, CRLF
 - FLOAT_EQUAL_ZERO
 - INFINITE
-- IS_ALPHA, IS_NUM, IS_ALPHANUM
+- IS_ALPHA, IS_DIGIT, IS_ALPHANUM
 - IS_CNTRL, IS_GRAPH
 - IS_HEX
 - IS_LOWER, IS_UPPER
@@ -73,6 +73,7 @@
 - gettimeofday_us
 - gethrtime_us
 - datetime_now
+- datetime_localtime
 - datetime_mktime
 - datetime_past
 - datetime_future
@@ -94,22 +95,22 @@
 - varint_decode
 
 ### hbase.h
-- safe_malloc
-- safe_calloc
-- safe_realloc
-- safe_zalloc
-- safe_strncpy
-- safe_strncat
-- strlower
-- strupper
-- strreverse
-- strstartswith
-- strendswith
-- strcontains
-- strlcpy
-- strlcat
-- strrchr_dot
-- strrchr_dir
+- hv_malloc
+- hv_calloc
+- hv_realloc
+- hv_zalloc
+- hv_strncpy
+- hv_strncat
+- hv_strlower
+- hv_strupper
+- hv_strreverse
+- hv_strstartswith
+- hv_strendswith
+- hv_strcontains
+- hv_wildcard_match
+- hv_strnchr
+- hv_strrchr_dot
+- hv_strrchr_dir
 - hv_basename
 - hv_suffixname
 - hv_mkdir_p
@@ -119,11 +120,16 @@
 - hv_isfile
 - hv_islink
 - hv_filesize
-- getboolean
 - get_executable_path
 - get_executable_dir
 - get_executable_file
 - get_run_dir
+- hv_rand
+- hv_random_string
+- hv_getboolean
+- hv_parse_size
+- hv_parse_time
+- hv_parse_url
 
 ### hversion.h
 - hv_version
@@ -222,8 +228,14 @@
 - tcp_nopush
 - tcp_keepalive
 - udp_broadcast
+- ip_v6only
 - so_sndtimeo
 - so_rcvtimeo
+- so_sndbuf
+- so_rcvbuf
+- so_reuseaddr
+- so_reuseport
+- so_linger
 
 ### hlog.h
 - default_logger
@@ -242,6 +254,7 @@
 - logger_set_max_bufsize
 - logger_set_max_filesize
 - logger_set_remain_days
+- logger_set_truncate_percent
 - logger_get_cur_file
 - hlogd, hlogi, hlogw, hloge, hlogf
 - LOGD, LOGI, LOGW, LOGE, LOGF
@@ -257,6 +270,7 @@
 - main_ctx_init
 - parse_opt
 - parse_opt_long
+- dump_opt_long
 - get_arg
 - get_env
 - setproctitle
@@ -304,8 +318,10 @@
 - listdir
 
 ### hurl.h
-- url_escape
-- url_unescape
+- HUrl::escape
+- HUrl::unescape
+- HUrl::parse
+- HUrl::dump
 
 ### hscope.h
 - defer
@@ -422,6 +438,9 @@
 - hio_is_ssl
 - hio_get_ssl
 - hio_set_ssl
+- hio_get_ssl_ctx
+- hio_set_ssl_ctx
+- hio_new_ssl_ctx
 - hio_setcb_accept
 - hio_setcb_connect
 - hio_setcb_read
@@ -453,6 +472,7 @@
 - hio_setup_ssl_upstream
 - hio_setup_udp_upstream
 - hio_create_socket
+- hio_create_pipe
 - hio_context
 - hio_set_context
 - htimer_add
@@ -461,15 +481,12 @@
 - htimer_reset
 - hidle_add
 - hidle_del
+- hsignal_add
+- hsignal_del
 
 ### nlog.h
 - network_logger
 - nlog_listen
-
-### nmap.h
-- nmap_discover
-- segment_discover
-- host_discover
 
 ## evpp
 - class Buffer
@@ -482,6 +499,21 @@
 - class TcpServer
 - class UdpClient
 - class UdpServer
+
+## ssl
+- hssl_ctx_init
+- hssl_ctx_cleanup
+- hssl_ctx_instance
+- hssl_ctx_new
+- hssl_ctx_free
+- hssl_new
+- hssl_free
+- hssl_accept
+- hssl_connnect
+- hssl_read
+- hssl_write
+- hssl_close
+- hssl_set_sni_hostname
 
 ## protocol
 
@@ -521,7 +553,6 @@
 - class HttpRequest
 - class HttpResponse
 - class HttpParser
-- class HttpService
 
 ### httpdef.h
 - http_content_type_enum
@@ -544,7 +575,7 @@
 - dump_json
 - dump_multipart
 
-### http_client.h
+### HttpClient.h
 - http_client_new
 - http_client_del
 - http_client_send
@@ -583,6 +614,7 @@
 ### HttpServer.h
 - http_server_run
 - http_server_stop
+- class HttpService
 - class HttpServer
 
 ### WebSocketClient.h
@@ -591,7 +623,33 @@
 ### WebSocketServer.h
 - websocket_server_run
 - websocket_server_stop
+- class WebSocketService
 - class WebSocketServer
+
+## mqtt
+- mqtt_client_new
+- mqtt_client_free
+- mqtt_client_run
+- mqtt_client_stop
+- mqtt_client_set_id
+- mqtt_client_set_will
+- mqtt_client_set_auth
+- mqtt_client_set_callback
+- mqtt_client_set_userdata
+- mqtt_client_get_userdata
+- mqtt_client_get_last_error
+- mqtt_client_set_ssl_ctx
+- mqtt_client_new_ssl_ctx
+- mqtt_client_set_reconnect
+- mqtt_client_reconnect
+- mqtt_client_set_connect_timeout
+- mqtt_client_connect
+- mqtt_client_is_connected
+- mqtt_client_disconnect
+- mqtt_client_publish
+- mqtt_client_subscribe
+- mqtt_client_unsubscribe
+- class MqttClient
 
 ## other
 - class HThreadPool

@@ -12,6 +12,7 @@
 #endif
 
 main_ctx_t  g_main_ctx;
+printf_t printf_fn = printf;
 
 static void init_arg_kv(int maxsize) {
     g_main_ctx.arg_kv_size = 0;
@@ -87,7 +88,7 @@ int main_ctx_init(int argc, char** argv) {
     hv_mkdir(logdir);
     snprintf(g_main_ctx.confile, sizeof(g_main_ctx.confile), "%s/etc/%s.conf", g_main_ctx.run_dir, g_main_ctx.program_name);
     snprintf(g_main_ctx.pidfile, sizeof(g_main_ctx.pidfile), "%s/logs/%s.pid", g_main_ctx.run_dir, g_main_ctx.program_name);
-    snprintf(g_main_ctx.logfile, sizeof(g_main_ctx.confile), "%s/logs/%s.log", g_main_ctx.run_dir, g_main_ctx.program_name);
+    snprintf(g_main_ctx.logfile, sizeof(g_main_ctx.logfile), "%s/logs/%s.log", g_main_ctx.run_dir, g_main_ctx.program_name);
     hlog_set_file(g_main_ctx.logfile);
 
     g_main_ctx.pid = getpid();
@@ -165,7 +166,32 @@ int main_ctx_init(int argc, char** argv) {
     g_main_ctx.worker_userdata = 0;
     g_main_ctx.proc_ctxs = NULL;
 
+    atexit(main_ctx_free);
     return 0;
+}
+
+void main_ctx_free(void) {
+    if (g_main_ctx.save_argv) {
+        SAFE_FREE(g_main_ctx.save_argv[0]);
+        SAFE_FREE(g_main_ctx.save_argv);
+    }
+    SAFE_FREE(g_main_ctx.cmdline);
+    if (g_main_ctx.save_envp) {
+        SAFE_FREE(g_main_ctx.save_envp[0]);
+        SAFE_FREE(g_main_ctx.save_envp);
+    }
+    if (g_main_ctx.arg_kv) {
+        for (int i = 0; i < g_main_ctx.arg_kv_size; ++i) {
+            SAFE_FREE(g_main_ctx.arg_kv[i]);
+        }
+        SAFE_FREE(g_main_ctx.arg_kv);
+    }
+    if (g_main_ctx.arg_list) {
+        for (int i = 0; i < g_main_ctx.arg_list_size; ++i) {
+            SAFE_FREE(g_main_ctx.arg_list[i]);
+        }
+        SAFE_FREE(g_main_ctx.arg_list);
+    }
 }
 
 #define UNDEFINED_OPTION    -1
@@ -192,7 +218,7 @@ int parse_opt(int argc, char** argv, const char* options) {
         while (*++p) {
             int arg_type = get_arg_type(*p, options);
             if (arg_type == UNDEFINED_OPTION) {
-                printf("Invalid option '%c'\n", *p);
+                printf_fn("Invalid option '%c'\n", *p);
                 return -20;
             } else if (arg_type == NO_ARGUMENT) {
                 save_arg_kv(p, 1, OPTION_ENABLE, 0);
@@ -205,7 +231,7 @@ int parse_opt(int argc, char** argv, const char* options) {
                     save_arg_kv(p, 1, argv[++i], 0);
                     break;
                 } else {
-                    printf("Option '%c' requires param\n", *p);
+                    printf_fn("Option '%c' requires param\n", *p);
                     return -30;
                 }
             }
@@ -263,7 +289,7 @@ int parse_opt_long(int argc, char** argv, const option_t* long_options, int size
         char* delim = strchr(arg, OPTION_DELIM);
         if (delim) {
             if (delim == arg || delim == arg+arg_len-1 || delim-arg > MAX_OPTION) {
-                printf("Invalid option '%s'\n", argv[i]);
+                printf_fn("Invalid option '%s'\n", argv[i]);
                 return -10;
             }
             memcpy(opt, arg, delim-arg);
@@ -283,7 +309,7 @@ int parse_opt_long(int argc, char** argv, const option_t* long_options, int size
                 save_arg_list(arg);
                 continue;
             } else {
-                printf("Invalid option: '%s'\n", argv[i]);
+                printf_fn("Invalid option: '%s'\n", argv[i]);
                 return -10;
             }
         }
@@ -291,7 +317,7 @@ int parse_opt_long(int argc, char** argv, const option_t* long_options, int size
         if (pOption->arg_type == NO_ARGUMENT) {
             // -h
             value = OPTION_ENABLE;
-        } else if (pOption->arg_type == REQUIRED_ARGUMENT) {
+        } else {
             if (delim) {
                 // --port=80
                 value = delim+1;
@@ -302,9 +328,12 @@ int parse_opt_long(int argc, char** argv, const option_t* long_options, int size
                 } else if (argv[i+1] != NULL) {
                     // --port 80
                     value = argv[++i];
-                } else {
-                    printf("Option '%s' requires parament\n", opt);
+                } else if (pOption->arg_type == REQUIRED_ARGUMENT) {
+                    printf_fn("Option '%s' requires parament\n", opt);
                     return -20;
+                } else {
+                    // arg_type == OPTIONAL_ARGUMENT
+                    value = OPTION_ENABLE;
                 }
             }
         }
@@ -318,16 +347,84 @@ int parse_opt_long(int argc, char** argv, const option_t* long_options, int size
     return 0;
 }
 
-#ifdef OS_UNIX
+int dump_opt_long(const option_t* long_options, int opt_size, char* out_str, int out_size) {
+    /*
+     * Usage: program_name [short_options]
+     * Options:
+     *   -%c|--%s          description
+     *   -%c|--%s <value>  description
+     *   -%c|--%s [value]  description
+     */
+    int align = 0, max_align = 0;
+    char short_options[256] = {0};
+    char* p = short_options;
+    for (int i = 0; i < opt_size; ++i) {
+        if (long_options[i].short_opt > 0) {
+            *p++ = long_options[i].short_opt;
+        }
+        if (long_options[i].arg_type == NO_ARGUMENT) {
+            // "  -%c|--%s  "
+            align = 9 + strlen(long_options[i].long_opt);
+        } else {
+            // "  -%c|--%s <value>  "
+            align = 17 + strlen(long_options[i].long_opt);
+            if (long_options[i].short_opt > 0) {
+                *p++ = ':';
+            }
+        }
+        if (align > max_align) max_align = align;
+    }
+
+    int offset = 0;
+    if (*g_main_ctx.program_name) {
+        offset = snprintf(out_str, out_size, "Usage: %s [%s]\n", g_main_ctx.program_name, short_options);
+    }
+    offset += snprintf(out_str + offset, out_size - offset, "Options:\n");
+    char short_opt_chars[4] = {0};
+    for (int i = 0; i < opt_size; ++i) {
+        if (long_options[i].short_opt > 0) {
+            // -%c|
+            short_opt_chars[0] = '-';
+            short_opt_chars[1] = long_options[i].short_opt;
+            short_opt_chars[2] = '|';
+        } else {
+            short_opt_chars[0] = ' ';
+            short_opt_chars[1] = ' ';
+            short_opt_chars[2] = ' ';
+        }
+        if (long_options[i].arg_type == NO_ARGUMENT) {
+            // "  -%c|--%s  "
+            align = 9 + strlen(long_options[i].long_opt);
+        } else {
+            // "  -%c|--%s <value>  "
+            align = 17 + strlen(long_options[i].long_opt);
+        }
+        offset += snprintf(out_str + offset, out_size - offset, "  %s--%s%s  %*s%s\n",
+                short_opt_chars,
+                long_options[i].long_opt,
+                long_options[i].arg_type == REQUIRED_ARGUMENT ? " <value>" :
+                long_options[i].arg_type == OPTIONAL_ARGUMENT ? " [value]" : "",
+                max_align - align, "",
+                long_options[i].description ? long_options[i].description : "");
+    }
+    return offset;
+}
+
+#if defined(OS_UNIX) && !HAVE_SETPROCTITLE
 /*
  * memory layout
  * argv[0]\0argv[1]\0argv[n]\0env[0]\0env[1]\0env[n]\0
  */
-void setproctitle(const char* title) {
-    //printf("proctitle=%s\n", title);
+void setproctitle(const char* fmt, ...) {
+    char buf[256] = {0};
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+    va_end(ap);
+
     int len = g_main_ctx.arg_len + g_main_ctx.env_len;
     if (g_main_ctx.os_argv && len) {
-        strncpy(g_main_ctx.os_argv[0], title, len-1);
+        strncpy(g_main_ctx.os_argv[0], buf, len-1);
     }
 }
 #endif
@@ -347,7 +444,7 @@ int create_pidfile() {
     return 0;
 }
 
-void delete_pidfile() {
+void delete_pidfile(void) {
     hlogi("delete_pidfile('%s') pid=%d", g_main_ctx.pidfile, g_main_ctx.pid);
     remove(g_main_ctx.pidfile);
 }
@@ -453,21 +550,22 @@ int signal_init(procedure_t reload_fn, void* reload_userdata) {
 #include <mmsystem.h> // for timeSetEvent
 
 // win32 use Event
-//static HANDLE s_hEventTerm = NULL;
+static HANDLE s_hEventTerm = NULL;
+static HANDLE s_hEventTermWait = NULL;
 static HANDLE s_hEventReload = NULL;
 
 static void WINAPI on_timer(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2) {
     DWORD ret;
-    /*
+
     ret = WaitForSingleObject(s_hEventTerm, 0);
     if (ret == WAIT_OBJECT_0) {
         hlogi("pid=%d recv event [TERM]", getpid());
         if (getpid_from_pidfile() == getpid()) {
+            SetEvent(s_hEventTermWait);
             timeKillEvent(uTimerID);
             exit(0);
         }
     }
-    */
 
     ret = WaitForSingleObject(s_hEventReload, 0);
     if (ret == WAIT_OBJECT_0) {
@@ -478,9 +576,11 @@ static void WINAPI on_timer(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PT
     }
 }
 
-static void signal_cleanup() {
-    //CloseHandle(s_hEventTerm);
-    //s_hEventTerm = NULL;
+static void signal_cleanup(void) {
+    CloseHandle(s_hEventTerm);
+    s_hEventTerm = NULL;
+    CloseHandle(s_hEventTermWait);
+    s_hEventTermWait = NULL;
     CloseHandle(s_hEventReload);
     s_hEventReload = NULL;
 }
@@ -490,11 +590,17 @@ int signal_init(procedure_t reload_fn, void* reload_userdata) {
     g_main_ctx.reload_userdata = reload_userdata;
 
     char eventname[MAX_PATH] = {0};
-    //snprintf(eventname, sizeof(eventname), "%s_term_event", g_main_ctx.program_name);
-    //s_hEventTerm = CreateEvent(NULL, FALSE, FALSE, eventname);
-    //s_hEventTerm = OpenEvent(EVENT_ALL_ACCESS, FALSE, eventname);
+    snprintf(eventname, sizeof(eventname), "%s_term_event", g_main_ctx.program_name);
+    s_hEventTerm = CreateEvent(NULL, FALSE, FALSE, eventname);
+    if(s_hEventTerm == NULL) return -1;
+
+    snprintf(eventname, sizeof(eventname), "%s_term_wait_event", g_main_ctx.program_name);
+    s_hEventTermWait = CreateEvent(NULL, FALSE, FALSE, eventname);
+    if(s_hEventTermWait == NULL) return -2;
+
     snprintf(eventname, sizeof(eventname), "%s_reload_event", g_main_ctx.program_name);
     s_hEventReload = CreateEvent(NULL, FALSE, FALSE, eventname);
+    if(s_hEventReload == NULL) return -3;
 
     timeSetEvent(1000, 1000, on_timer, 0, TIME_PERIODIC);
 
@@ -507,8 +613,8 @@ static void kill_proc(int pid) {
 #ifdef OS_UNIX
     kill(pid, SIGNAL_TERMINATE);
 #else
-    //SetEvent(s_hEventTerm);
-    //hv_sleep(1);
+    SetEvent(s_hEventTerm);
+    if (WaitForSingleObject(s_hEventTermWait, 2000) == WAIT_OBJECT_0) return;
     HANDLE hproc = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
     if (hproc) {
         TerminateProcess(hproc, 0);
@@ -518,48 +624,55 @@ static void kill_proc(int pid) {
 }
 
 void signal_handle(const char* signal) {
+    if (signal_handle_noexit(signal)) exit(0);
+}
+
+bool signal_handle_noexit(const char* signal) {
     if (strcmp(signal, "start") == 0) {
         if (g_main_ctx.oldpid > 0) {
-            printf("%s is already running, pid=%d\n", g_main_ctx.program_name, g_main_ctx.oldpid);
-            exit(0);
+            printf_fn("%s is already running, pid=%d\n", g_main_ctx.program_name, g_main_ctx.oldpid);
+            return true;
         }
     } else if (strcmp(signal, "stop") == 0) {
         if (g_main_ctx.oldpid > 0) {
             kill_proc(g_main_ctx.oldpid);
-            printf("%s stop/waiting\n", g_main_ctx.program_name);
+            printf_fn("%s stop/waiting\n", g_main_ctx.program_name);
         } else {
-            printf("%s is already stopped\n", g_main_ctx.program_name);
+            printf_fn("%s is already stopped\n", g_main_ctx.program_name);
         }
-        exit(0);
+        return true;
     } else if (strcmp(signal, "restart") == 0) {
         if (g_main_ctx.oldpid > 0) {
             kill_proc(g_main_ctx.oldpid);
-            printf("%s stop/waiting\n", g_main_ctx.program_name);
+            printf_fn("%s stop/waiting\n", g_main_ctx.program_name);
             hv_sleep(1);
         }
     } else if (strcmp(signal, "status") == 0) {
         if (g_main_ctx.oldpid > 0) {
-            printf("%s start/running, pid=%d\n", g_main_ctx.program_name, g_main_ctx.oldpid);
+            printf_fn("%s start/running, pid=%d\n", g_main_ctx.program_name, g_main_ctx.oldpid);
         } else {
-            printf("%s stop/waiting\n", g_main_ctx.program_name);
+            printf_fn("%s is already stopped\n", g_main_ctx.program_name);
         }
-        exit(0);
+        return true;
     } else if (strcmp(signal, "reload") == 0) {
         if (g_main_ctx.oldpid > 0) {
-            printf("reload confile [%s]\n", g_main_ctx.confile);
+            printf_fn("reload confile [%s]\n", g_main_ctx.confile);
 #ifdef OS_UNIX
             kill(g_main_ctx.oldpid, SIGNAL_RELOAD);
 #else
             SetEvent(s_hEventReload);
 #endif
+            hv_sleep(1);
+        } else {
+            printf_fn("%s is already stopped\n", g_main_ctx.program_name);
         }
-        hv_sleep(1);
-        exit(0);
+        return true;
     } else {
-        printf("Invalid signal: '%s'\n", signal);
-        exit(0);
+        printf_fn("Invalid signal: '%s'\n", signal);
+        return true;
     }
-    printf("%s start/running\n", g_main_ctx.program_name);
+    printf_fn("%s start/running\n", g_main_ctx.program_name);
+    return false;
 }
 
 // master-workers processes
@@ -573,9 +686,7 @@ static HTHREAD_ROUTINE(worker_thread) {
 
 static void worker_init(void* userdata) {
 #ifdef OS_UNIX
-    char proctitle[256] = {0};
-    snprintf(proctitle, sizeof(proctitle), "%s: worker process", g_main_ctx.program_name);
-    setproctitle(proctitle);
+    setproctitle("%s: worker process", g_main_ctx.program_name);
     signal(SIGNAL_RELOAD, signal_handler);
 #endif
 }
@@ -623,9 +734,7 @@ int master_workers_run(procedure_t worker_fn, void* worker_userdata,
         }
         // master-workers processes
 #ifdef OS_UNIX
-        char proctitle[256] = {0};
-        snprintf(proctitle, sizeof(proctitle), "%s: master process", g_main_ctx.program_name);
-        setproctitle(proctitle);
+        setproctitle("%s: master process", g_main_ctx.program_name);
         signal(SIGNAL_RELOAD, signal_handler);
 #endif
         g_main_ctx.worker_processes = worker_processes;

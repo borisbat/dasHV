@@ -4,20 +4,6 @@
 #include "HttpParser.h"
 #include "http_parser.h"
 
-enum http_parser_state {
-    HP_START_REQ_OR_RES,
-    HP_MESSAGE_BEGIN,
-    HP_URL,
-    HP_STATUS,
-    HP_HEADER_FIELD,
-    HP_HEADER_VALUE,
-    HP_HEADERS_COMPLETE,
-    HP_CHUNK_HEADER,
-    HP_BODY,
-    HP_CHUNK_COMPLETE,
-    HP_MESSAGE_COMPLETE
-};
-
 class Http1Parser : public HttpParser {
 public:
     static http_parser_settings     cbs;
@@ -36,12 +22,15 @@ public:
     virtual ~Http1Parser();
 
     void handle_header() {
-        if (header_field.size() != 0 && header_value.size() != 0) {
+        if (header_field.size() != 0) {
             if (stricmp(header_field.c_str(), "Set-CooKie") == 0 ||
                 stricmp(header_field.c_str(), "Cookie") == 0) {
                 HttpCookie cookie;
                 if (cookie.parse(header_value)) {
                     parsed->cookies.emplace_back(cookie);
+                    header_field.clear();
+                    header_value.clear();
+                    return;
                 }
             }
             parsed->headers[header_field] = header_value;
@@ -81,6 +70,11 @@ public:
 
     virtual bool IsComplete() {
         return state == HP_MESSAGE_COMPLETE;
+    }
+
+    virtual bool IsEof() {
+        FeedRecvData(NULL, 0);
+        return IsComplete();
     }
 
     virtual int GetError() {
@@ -130,6 +124,13 @@ public:
 
     virtual int SubmitResponse(HttpResponse* res) {
         submited = res;
+        return 0;
+    }
+
+    // HttpMessage::http_cb
+    int invokeHttpCb(const char* data = NULL, size_t size = 0) {
+        if (parsed->http_cb == NULL) return -1;
+        parsed->http_cb(parsed, state, data, size);
         return 0;
     }
 };

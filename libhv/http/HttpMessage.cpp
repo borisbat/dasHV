@@ -5,88 +5,189 @@
 #include "htime.h"
 #include "hlog.h"
 #include "hurl.h"
-#include "http_parser.h" // for http_parser_url
+#include "base64.h"
 
 using namespace hv;
 
 http_headers DefaultHeaders;
 http_body    NoBody;
+HttpCookie   NoCookie;
 char HttpMessage::s_date[32] = {0};
+
+HttpCookie::HttpCookie() {
+    init();
+}
+
+void HttpCookie::init()  {
+    max_age = 0;
+    secure = false;
+    httponly = false;
+    samesite = Default;
+    priority = NotSet;
+}
+
+void HttpCookie::reset() {
+    init();
+    name.clear();
+    value.clear();
+    domain.clear();
+    path.clear();
+    expires.clear();
+    kv.clear();
+}
 
 bool HttpCookie::parse(const std::string& str) {
     std::stringstream ss;
     ss << str;
-    std::string kv;
+    std::string line;
     std::string::size_type pos;
     std::string key;
     std::string val;
-    while (std::getline(ss, kv, ';')) {
-        pos = kv.find_first_of('=');
+
+    reset();
+    while (std::getline(ss, line, ';')) {
+        pos = line.find_first_of('=');
         if (pos != std::string::npos) {
-            key = trim(kv.substr(0, pos));
-            val = trim(kv.substr(pos+1));
+            key = trim(line.substr(0, pos));
+            val = trim(line.substr(pos+1));
+            const char* pkey = key.c_str();
+            if (stricmp(pkey, "Domain") == 0) {
+                domain = val;
+            }
+            else if (stricmp(pkey, "Path") == 0) {
+                path = val;
+            }
+            else if (stricmp(pkey, "Expires") == 0) {
+                expires = val;
+            }
+            else if (stricmp(pkey, "Max-Age") == 0) {
+                max_age = atoi(val.c_str());
+            }
+            else if (stricmp(pkey, "SameSite") == 0) {
+                samesite =  stricmp(val.c_str(), "Strict") == 0 ? HttpCookie::SameSite::Strict :
+                            stricmp(val.c_str(), "Lax")    == 0 ? HttpCookie::SameSite::Lax    :
+                            stricmp(val.c_str(), "None")   == 0 ? HttpCookie::SameSite::None   :
+                                                                  HttpCookie::SameSite::Default;
+            }
+            else if (stricmp(pkey, "Priority") == 0) {
+                priority =  stricmp(val.c_str(), "Low")    == 0 ? HttpCookie::Priority::Low    :
+                            stricmp(val.c_str(), "Medium") == 0 ? HttpCookie::Priority::Medium :
+                            stricmp(val.c_str(), "High")   == 0 ? HttpCookie::Priority::High   :
+                                                                  HttpCookie::Priority::NotSet ;
+            }
+            else {
+                if (name.empty()) {
+                    name = key;
+                    value = val;
+                }
+                kv[key] = val;
+            }
         } else {
-            key = trim(kv);
+            key = trim(line);
+            const char* pkey = key.c_str();
+            if (stricmp(pkey, "Secure") == 0) {
+                secure = true;
+            }
+            else if (stricmp(pkey, "HttpOnly") == 0) {
+                httponly = true;
+            }
+            else {
+                hlogi("Cookie Unrecognized key '%s'", key.c_str());
+            }
         }
 
-        const char* pkey = key.c_str();
-        if (stricmp(pkey, "domain") == 0) {
-            domain = val;
-        }
-        else if (stricmp(pkey, "path") == 0) {
-            path = val;
-        }
-        else if (stricmp(pkey, "max-age") == 0) {
-            max_age = atoi(val.c_str());
-        }
-        else if (stricmp(pkey, "secure") == 0) {
-            secure = true;
-        }
-        else if (stricmp(pkey, "httponly") == 0) {
-            httponly = true;
-        }
-        else if (val.size() > 0) {
-            name = key;
-            value = val;
-        }
-        else {
-            hlogw("Unrecognized key '%s'", key.c_str());
-        }
     }
-    return !name.empty() && !value.empty();
+    return !name.empty();
 }
 
 std::string HttpCookie::dump() const {
-    assert(!name.empty() && !value.empty());
+    assert(!name.empty() || !kv.empty());
     std::string res;
-    res = name;
-    res += "=";
-    res += value;
+
+    if (!name.empty()) {
+        res = name;
+        res += "=";
+        res += value;
+    }
+
+    for (auto& pair : kv) {
+        if (pair.first == name) continue;
+        if (!res.empty()) res += "; ";
+        res += pair.first;
+        res += "=";
+        res += pair.second;
+    }
 
     if (!domain.empty()) {
-        res += "; domain=";
+        res += "; Domain=";
         res += domain;
     }
 
     if (!path.empty()) {
-        res += "; path=";
+        res += "; Path=";
         res += path;
     }
 
     if (max_age > 0) {
-        res += "; max-age=";
+        res += "; Max-Age=";
         res += hv::to_string(max_age);
+    } else if (!expires.empty()) {
+        res += "; Expires=";
+        res += expires;
+    }
+
+    if (samesite != HttpCookie::SameSite::Default) {
+        res += "; SameSite=";
+        res += samesite == HttpCookie::SameSite::Strict ? "Strict" :
+               samesite == HttpCookie::SameSite::Lax    ? "Lax"    :
+                                                          "None"   ;
+    }
+
+    if (priority != HttpCookie::Priority::NotSet) {
+        res += "; Priority=";
+        res += priority == HttpCookie::Priority::Low    ? "Low"    :
+               priority == HttpCookie::Priority::Medium ? "Medium" :
+                                                          "High"   ;
     }
 
     if (secure) {
-        res += "; secure";
+        res += "; Secure";
     }
 
     if (httponly) {
-        res += "; httponly";
+        res += "; HttpOnly";
     }
 
     return res;
+}
+
+HttpMessage::HttpMessage() {
+    type = HTTP_BOTH;
+    Init();
+}
+
+HttpMessage::~HttpMessage() {
+
+}
+
+void HttpMessage::Init() {
+    http_major = 1;
+    http_minor = 1;
+    content = NULL;
+    content_length = 0;
+    content_type = CONTENT_TYPE_NONE;
+}
+
+void HttpMessage::Reset() {
+    Init();
+    headers.clear();
+    cookies.clear();
+    body.clear();
+#ifndef WITHOUT_HTTP_CONTENT
+    json.clear();
+    form.clear();
+    kv.clear();
+#endif
 }
 
 #ifndef WITHOUT_HTTP_CONTENT
@@ -96,6 +197,9 @@ std::string HttpMessage::GetString(const char* key, const std::string& defvalue)
     switch (ContentType()) {
     case APPLICATION_JSON:
     {
+        if (json.empty()) {
+            ParseBody();
+        }
         if (!json.is_object()) {
             return defvalue;
         }
@@ -105,9 +209,6 @@ std::string HttpMessage::GetString(const char* key, const std::string& defvalue)
         }
         else if (value.is_number()) {
             return hv::to_string(value);
-        }
-        else if (value.is_null()) {
-            return "null";
         }
         else if (value.is_boolean()) {
             bool b = value;
@@ -120,6 +221,9 @@ std::string HttpMessage::GetString(const char* key, const std::string& defvalue)
         break;
     case MULTIPART_FORM_DATA:
     {
+        if (form.empty()) {
+            ParseBody();
+        }
         auto iter = form.find(key);
         if (iter != form.end()) {
             return iter->second.content;
@@ -128,6 +232,9 @@ std::string HttpMessage::GetString(const char* key, const std::string& defvalue)
         break;
     case APPLICATION_URLENCODED:
     {
+        if (kv.empty()) {
+            ParseBody();
+        }
         auto iter = kv.find(key);
         if (iter != kv.end()) {
             return iter->second;
@@ -143,6 +250,9 @@ std::string HttpMessage::GetString(const char* key, const std::string& defvalue)
 template<>
 HV_EXPORT int64_t HttpMessage::Get(const char* key, int64_t defvalue) {
     if (ContentType() == APPLICATION_JSON) {
+        if (json.empty()) {
+            ParseBody();
+        }
         if (!json.is_object()) {
             return defvalue;
         }
@@ -153,9 +263,6 @@ HV_EXPORT int64_t HttpMessage::Get(const char* key, int64_t defvalue) {
         else if (value.is_string()) {
             std::string str = value;
             return atoll(str.c_str());
-        }
-        else if (value.is_null()) {
-            return 0;
         }
         else if (value.is_boolean()) {
             bool b = value;
@@ -179,6 +286,9 @@ HV_EXPORT int HttpMessage::Get(const char* key, int defvalue) {
 template<>
 HV_EXPORT double HttpMessage::Get(const char* key, double defvalue) {
     if (ContentType() == APPLICATION_JSON) {
+        if (json.empty()) {
+            ParseBody();
+        }
         if (!json.is_object()) {
             return defvalue;
         }
@@ -189,9 +299,6 @@ HV_EXPORT double HttpMessage::Get(const char* key, double defvalue) {
         else if (value.is_string()) {
             std::string str = value;
             return atof(str.c_str());
-        }
-        else if (value.is_null()) {
-            return 0.0f;
         }
         else {
             return defvalue;
@@ -211,6 +318,9 @@ HV_EXPORT float HttpMessage::Get(const char* key, float defvalue) {
 template<>
 HV_EXPORT bool HttpMessage::Get(const char* key, bool defvalue) {
     if (ContentType() == APPLICATION_JSON) {
+        if (json.empty()) {
+            ParseBody();
+        }
         if (!json.is_object()) {
             return defvalue;
         }
@@ -220,10 +330,7 @@ HV_EXPORT bool HttpMessage::Get(const char* key, bool defvalue) {
         }
         else if (value.is_string()) {
             std::string str = value;
-            return getboolean(str.c_str());
-        }
-        else if (value.is_null()) {
-            return false;
+            return hv_getboolean(str.c_str());
         }
         else if (value.is_number()) {
             return value != 0;
@@ -234,7 +341,7 @@ HV_EXPORT bool HttpMessage::Get(const char* key, bool defvalue) {
     }
     else {
         std::string str = GetString(key);
-        return str.empty() ? defvalue : getboolean(str.c_str());
+        return str.empty() ? defvalue : hv_getboolean(str.c_str());
     }
 }
 
@@ -294,17 +401,30 @@ append:
     return;
 }
 
+bool HttpMessage::NeedContentLength() {
+    if (type == HTTP_RESPONSE) {
+        HttpResponse* res = (HttpResponse*)(this);
+        if (res->status_code / 100 == 1 ||
+            res->status_code == HTTP_STATUS_NO_CONTENT ||
+            res->status_code == HTTP_STATUS_NOT_MODIFIED) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
 void HttpMessage::FillContentLength() {
     auto iter = headers.find("Content-Length");
     if (iter != headers.end()) {
-        content_length = atoi(iter->second.c_str());
+        content_length = atoll(iter->second.c_str());
     }
     if (content_length == 0) {
         DumpBody();
         content_length = body.size();
     }
-    if (iter == headers.end() && !IsChunked()) {
-        if (content_length != 0 || type == HTTP_RESPONSE) {
+    if (iter == headers.end() && !IsChunked() && content_type != TEXT_EVENT_STREAM) {
+        if (content_length != 0 || NeedContentLength()) {
             headers["Content-Length"] = hv::to_string(content_length);
         }
     }
@@ -312,7 +432,7 @@ void HttpMessage::FillContentLength() {
 
 bool HttpMessage::IsChunked() {
     auto iter = headers.find("Transfer-Encoding");
-    return iter == headers.end() ? false : stricmp(iter->second.c_str(), "chunked") == 0;
+    return iter != headers.end() && stricmp(iter->second.c_str(), "chunked") == 0;
 }
 
 bool HttpMessage::IsKeepAlive() {
@@ -336,6 +456,47 @@ bool HttpMessage::IsKeepAlive() {
     return keepalive;
 }
 
+bool HttpMessage::IsUpgrade() {
+    auto iter = headers.find("upgrade");
+    return iter != headers.end();
+}
+
+// headers
+void HttpMessage::SetHeader(const char* key, const std::string& value) {
+    headers[key] = value;
+}
+std::string HttpMessage::GetHeader(const char* key, const std::string& defvalue) {
+    auto iter = headers.find(key);
+    return iter == headers.end() ? defvalue : iter->second;
+}
+
+// cookies
+void HttpMessage::AddCookie(const HttpCookie& cookie) {
+    cookies.push_back(cookie);
+}
+const HttpCookie& HttpMessage::GetCookie(const std::string& name) {
+    for (auto iter = cookies.begin(); iter != cookies.end(); ++iter) {
+        if (iter->name == name) {
+            return *iter;
+        }
+        auto kv_iter = iter->kv.find(name);
+        if (kv_iter != iter->kv.end()) {
+            iter->name = name;
+            iter->value = kv_iter->second;
+            return *iter;
+        }
+    }
+    return NoCookie;
+}
+
+// body
+void HttpMessage::SetBody(const std::string& body) {
+    this->body = body;
+}
+const std::string& HttpMessage::Body() {
+    return this->body;
+}
+
 void HttpMessage::DumpHeaders(std::string& str) {
     FillContentType();
     FillContentLength();
@@ -347,7 +508,24 @@ void HttpMessage::DumpHeaders(std::string& str) {
             // %s: %s\r\n
             str += header.first;
             str += ": ";
-            str += header.second;
+            // fix CVE-2023-26148
+            // if the value has \r\n, translate to \\r\\n
+            if (header.second.find("\r") != std::string::npos ||
+                header.second.find("\n") != std::string::npos) {
+                std::string newStr = "";
+                for (size_t i = 0; i < header.second.size(); ++i) {
+                    if (header.second[i] == '\r') {
+                        newStr += "\\r";
+                    } else if (header.second[i] == '\n') {
+                        newStr += "\\n";
+                    } else {
+                        newStr += header.second[i];
+                    }
+                }
+                str += newStr;
+            } else {
+                str += header.second;
+            }
             str += "\r\n";
         }
     }
@@ -402,7 +580,7 @@ void HttpMessage::DumpBody() {
 void HttpMessage::DumpBody(std::string& str) {
     DumpBody();
     const char* content = (const char*)Content();
-    int content_length = ContentLength();
+    size_t content_length = ContentLength();
     if (content && content_length) {
         str.append(content, content_length);
     }
@@ -461,9 +639,41 @@ std::string HttpMessage::Dump(bool is_dump_headers, bool is_dump_body) {
     return str;
 }
 
+
+HttpRequest::HttpRequest() : HttpMessage() {
+    type = HTTP_REQUEST;
+    Init();
+}
+
+void HttpRequest::Init() {
+    headers["User-Agent"] = DEFAULT_HTTP_USER_AGENT;
+    headers["Accept"] = "*/*";
+    method = HTTP_GET;
+    scheme = "http";
+    host = "127.0.0.1";
+    port = DEFAULT_HTTP_PORT;
+    path = "/";
+    timeout = DEFAULT_HTTP_TIMEOUT;
+    connect_timeout = DEFAULT_HTTP_CONNECT_TIMEOUT;
+    retry_count = DEFAULT_HTTP_FAIL_RETRY_COUNT;
+    retry_delay = DEFAULT_HTTP_FAIL_RETRY_DELAY;
+    redirect = 1;
+    proxy = 0;
+    cancel = 0;
+}
+
+void HttpRequest::Reset() {
+    HttpMessage::Reset();
+    Init();
+    url.clear();
+    query_params.clear();
+}
+
 void HttpRequest::DumpUrl() {
     std::string str;
-    if (url.size() != 0 && strstr(url.c_str(), "://") != NULL) {
+    if (url.size() != 0 &&
+        *url.c_str() != '/' &&
+        strstr(url.c_str(), "://") != NULL) {
         // have been complete url
         goto query;
     }
@@ -508,15 +718,14 @@ query:
 
 void HttpRequest::ParseUrl() {
     DumpUrl();
-    http_parser_url parser;
-    http_parser_url_init(&parser);
-    http_parser_parse_url(url.c_str(), url.size(), 0, &parser);
+    hurl_t parser;
+    hv_parse_url(&parser, url.c_str());
     // scheme
-    std::string scheme_ = url.substr(parser.field_data[UF_SCHEMA].off, parser.field_data[UF_SCHEMA].len);
+    std::string scheme_ = url.substr(parser.fields[HV_URL_SCHEME].off, parser.fields[HV_URL_SCHEME].len);
     // host
     std::string host_(host);
-    if (parser.field_set & (1<<UF_HOST)) {
-        host_ = url.substr(parser.field_data[UF_HOST].off, parser.field_data[UF_HOST].len);
+    if (parser.fields[HV_URL_HOST].len > 0) {
+        host_ = url.substr(parser.fields[HV_URL_HOST].off, parser.fields[HV_URL_HOST].len);
     }
     // port
     int port_ = parser.port ? parser.port : strcmp(scheme_.c_str(), "https") ? DEFAULT_HTTP_PORT : DEFAULT_HTTPS_PORT;
@@ -527,21 +736,20 @@ void HttpRequest::ParseUrl() {
     }
     FillHost(host_.c_str(), port_);
     // path
-    if (parser.field_set & (1<<UF_PATH)) {
-        const char* sp = url.c_str() + parser.field_data[UF_PATH].off;
-        char* ep = (char*)(sp + parser.field_data[UF_PATH].len);
-        char ev = *ep;
-        *ep = '\0';
-        path = url_unescape(sp);
-        if (ev != '\0') {
-            *ep = ev;
-            path += ep;
-        }
+    if (parser.fields[HV_URL_PATH].len > 0) {
+        path = url.substr(parser.fields[HV_URL_PATH].off);
     }
     // query
-    if (parser.field_set & (1<<UF_QUERY)) {
-        parse_query_params(url.c_str()+parser.field_data[UF_QUERY].off, query_params);
+    if (parser.fields[HV_URL_QUERY].len > 0) {
+        parse_query_params(url.c_str()+parser.fields[HV_URL_QUERY].off, query_params);
     }
+}
+
+std::string HttpRequest::Path() {
+    const char* s = path.c_str();
+    const char* e = s;
+    while (*e && *e != '?' && *e != '#') ++e;
+    return HUrl::unescape(std::string(s, e));
 }
 
 void HttpRequest::FillHost(const char* host, int port) {
@@ -551,7 +759,7 @@ void HttpRequest::FillHost(const char* host, int port) {
             port == DEFAULT_HTTPS_PORT) {
             headers["Host"] = host;
         } else {
-            headers["Host"] = asprintf("%s:%d", host, port);
+            headers["Host"] = hv::NetAddr::to_string(host, port);
         }
     }
 }
@@ -567,6 +775,20 @@ void HttpRequest::SetProxy(const char* host, int port) {
     this->host = host;
     this->port = port;
     proxy = 1;
+}
+
+void HttpRequest::SetAuth(const std::string& auth) {
+    SetHeader("Authorization", auth);
+}
+
+void HttpRequest::SetBasicAuth(const std::string& username, const std::string& password) {
+    std::string strAuth = hv::asprintf("%s:%s", username.c_str(), password.c_str());
+    std::string base64Auth = hv::Base64Encode((const unsigned char*)strAuth.c_str(), strAuth.size());
+    SetAuth(std::string("Basic ") + base64Auth);
+}
+
+void HttpRequest::SetBearerTokenAuth(const std::string& token) {
+    SetAuth(std::string("Bearer ") + token);
 }
 
 std::string HttpRequest::Dump(bool is_dump_headers, bool is_dump_body) {
@@ -587,6 +809,34 @@ std::string HttpRequest::Dump(bool is_dump_headers, bool is_dump_body) {
         DumpBody(str);
     }
     return str;
+}
+
+void HttpRequest::SetRange(long from, long to) {
+    SetHeader("Range", hv::asprintf("bytes=%ld-%ld", from, to));
+}
+
+bool HttpRequest::GetRange(long& from, long& to) {
+    auto iter = headers.find("Range");
+    if (iter != headers.end()) {
+        sscanf(iter->second.c_str(), "bytes=%ld-%ld", &from, &to);
+        return true;
+    }
+    from = to = 0;
+    return false;
+}
+
+HttpResponse::HttpResponse() : HttpMessage() {
+    type = HTTP_RESPONSE;
+    Init();
+}
+
+void HttpResponse::Init() {
+    status_code = HTTP_STATUS_OK;
+}
+
+void HttpResponse::Reset() {
+    HttpMessage::Reset();
+    Init();
 }
 
 std::string HttpResponse::Dump(bool is_dump_headers, bool is_dump_body) {
@@ -611,4 +861,18 @@ std::string HttpResponse::Dump(bool is_dump_headers, bool is_dump_body) {
         DumpBody(str);
     }
     return str;
+}
+
+void HttpResponse::SetRange(long from, long to, long total) {
+    SetHeader("Content-Range", hv::asprintf("bytes %ld-%ld/%ld", from, to, total));
+}
+
+bool HttpResponse::GetRange(long& from, long& to, long& total) {
+    auto iter = headers.find("Content-Range");
+    if (iter != headers.end()) {
+        sscanf(iter->second.c_str(), "bytes %ld-%ld/%ld", &from, &to, &total);
+        return true;
+    }
+    from = to = total = 0;
+    return false;
 }
