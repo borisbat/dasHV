@@ -32,7 +32,7 @@ int das_wsc_send_buf ( hv::WebSocketClient & client, const char* msg, int32_t le
 bool das_wsc_is_connected ( hv::WebSocketClient & client );
 void das_wsc_tick ( hv::WebSocketClient & client );
 
-hv::WebSocketServer * makeWebSocketServer ( int port, const void * pClass, const StructInfo * info, Context * context );
+hv::WebSocketServer * makeWebSocketServer ( int port, int httpsPort, const char * pathToCert, const void * pClass, const StructInfo * info, Context * context, LineInfoArg * at );
 int das_wss_send ( hv::WebSocketChannel * channel, const char * msg, ws_opcode opcode, bool fin );
 int das_wss_send_buf ( hv::WebSocketChannel * channel, const char * buf, int32_t len, ws_opcode opcode, bool fin );
 int das_wss_send_fragment ( hv::WebSocketChannel * channel, const char * buf, int32_t len, int32_t fragment, ws_opcode opcode );
