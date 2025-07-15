@@ -273,10 +273,6 @@ if(BUILD_STATIC)
     add_custom_target(libhv_static DEPENDS hv_static)
 endif()
 
-if(WIN32 AND NOT MINGW)
-    install(FILES $<TARGET_PDB_FILE:${PROJECT_NAME}> DESTINATION bin OPTIONAL)
-endif()
-
 install(FILES ${LIBHV_HEADERS} DESTINATION include/hv)
 install(EXPORT libhvConfig DESTINATION lib/cmake/libhv)
 

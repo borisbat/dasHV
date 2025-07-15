@@ -297,6 +297,10 @@ public:
         return content_length;
     }
 
+    int IntContentLength() const {
+        return content_length;
+    }
+
     http_content_type ContentType() {
         if (content_type == CONTENT_TYPE_NONE) {
             FillContentType();

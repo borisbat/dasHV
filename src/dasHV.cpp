@@ -12,6 +12,7 @@
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketClient,hv::WebSocketClient)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketServer,hv::WebSocketServer)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(WebSocketChannel,hv::WebSocketChannel)
+IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpMessage,HttpMessage)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpRequest,HttpRequest)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpResponse,HttpResponse)
 IMPLEMENT_EXTERNAL_TYPE_FACTORY(HttpContext,hv::HttpContext)
@@ -254,6 +255,13 @@ struct WebSocketChannelAnnotation : ManagedStructureAnnotation<hv::WebSocketChan
     }
 };
 
+
+struct HttpMessageAnnotation : ManagedStructureAnnotation<HttpMessage> {
+    HttpMessageAnnotation(ModuleLibrary & ml)
+        : ManagedStructureAnnotation ("HttpMessage", ml, "HttpMessage") {
+    }
+};
+
 struct HttpRequestAnnotation : ManagedStructureAnnotation<HttpRequest> {
     HttpRequestAnnotation(ModuleLibrary & ml)
         : ManagedStructureAnnotation ("HttpRequest", ml, "HttpRequest") {
@@ -274,7 +282,8 @@ struct HttpResponseAnnotation : ManagedStructureAnnotation<HttpResponse> {
         addField<DAS_BIND_MANAGED_FIELD(body)>("body");
         addField<DAS_BIND_MANAGED_FIELD(status_code)>("status_code");
         addField<DAS_BIND_MANAGED_FIELD(content)>("content");
-        addField<DAS_BIND_MANAGED_FIELD(content_length)>("content_length");
+        addProperty<DAS_BIND_MANAGED_PROP(IntContentLength)>("content_length", "IntContentLength");
+        from("HttpMessage");
     }
 };
 
@@ -290,7 +299,7 @@ public:
         : HvWebServer_Adapter(info), classPtr(pClass), context(ctx) {
         registerWebSocketService(&service);
         registerHttpService(&router);
-        service.onopen = [=](const WebSocketChannelPtr& channel, const std::string& url) {
+        service.onopen = [=](const WebSocketChannelPtr& channel, const HttpRequestPtr& url) {
             lock_guard<mutex> guard(lock);
             que.emplace_back([=](){
                 onWsOpen(channel,url);
@@ -309,10 +318,10 @@ public:
             });
         };
     }
-    void onWsOpen ( const WebSocketChannelPtr& channel, const std::string& url) {
+    void onWsOpen ( const WebSocketChannelPtr& channel, const HttpRequestPtr& url) {
         lock_guard<mutex> guard(lock);
         if ( auto fnOnOpen = get_onWsOpen(classPtr) ) {
-            invoke_onWsOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url.c_str());
+            invoke_onWsOpen(context,fnOnOpen,classPtr,channel.get(),(char *)url->url.c_str());
         }
     }
     void onWsClose ( const WebSocketChannelPtr& channel ) {
@@ -477,7 +486,7 @@ void das_req_POST_HF ( const char * url, const char * text, const TTable<char *,
     auto * hashes = (TableHashKey *)from.hashes;
     for ( uint32_t i=0; i!=from.capacity; ++i ) {
         if ( hashes[i]!=HASH_EMPTY64 && hashes[i]!=HASH_KILLED64 ) {
-            FormData data;
+            hv::FormData data;
             auto value = values[i];
             if ( value != nullptr ) {
                 if (*value == '@') {
@@ -532,6 +541,7 @@ public:
         addAnnotation(make_smart<WebSocketServerAnnotation>(lib));
         addAnnotation(make_smart<WebSocketChannelAnnotation>(lib));
         addAnnotation(make_smart<HttpRequestAnnotation>(lib));
+        addAnnotation(make_smart<HttpMessageAnnotation>(lib));
         addAnnotation(make_smart<HttpResponseAnnotation>(lib));
         addAnnotation(make_smart<HttpContextAnnotation>(lib));
         addExtern<DAS_BIND_FUN(makeWebSocketServer)> (*this, lib, "make_web_socket_server",
