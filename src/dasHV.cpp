@@ -371,14 +371,14 @@ hv::WebSocketServer * makeWebSocketServer ( int port, int httpsPort, const char 
     if ( httpsPort ) {
         hssl_ctx_init_param_t param;
         memset(&param, 0, sizeof(param));
-        string crt_root = pathToCert ? pathToCert : getDasRoot() + "/modules/dasHV/dashv";
+        string crt_root = pathToCert ? pathToCert : getDasRoot() + "/modules/dasHV/libhv/cert";
         auto crt_file = crt_root + "/server.crt";
         auto key_file = crt_root + "/server.key";
         param.crt_file = crt_file.c_str();
         param.key_file = key_file.c_str();
         param.endpoint = HSSL_SERVER;
         if (hssl_ctx_init(&param) == NULL) {
-            context->throw_error_at(at, "libHV: hssl_ctx_init failed! Please check the certificate files.");
+            context->throw_error_at(at, "libHV: hssl_ctx_init failed! Please check the certificate files `%s` and `%s`.", crt_file.c_str(), key_file.c_str());
         }
     }
     return adapter;
