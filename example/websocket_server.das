@@ -48,6 +48,7 @@ class ExampleWebServer : HvWebServer {
 def main() {
     print("server on port 9999\n")
     var wss = new ExampleWebServer()
+    // wss->init_wss(0,9999) // use this one for WSS version
     wss->init(9999)
     wss->start()
     while (true) {
