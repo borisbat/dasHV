@@ -4,6 +4,7 @@
 
 #include "hevent.h"
 #include "hlog.h"
+#include "hthread.h"
 
 static kcp_setting_t s_kcp_setting;
 
@@ -75,34 +76,67 @@ kcp_t* hio_get_kcp(hio_t* io, uint32_t conv) {
     return kcp;
 }
 
+static void hio_write_kcp_event_cb(hevent_t* ev) {
+    hio_t* io = (hio_t*)ev->userdata;
+    hbuf_t* buf = (hbuf_t*)ev->privdata;
+
+    hio_write_kcp(io, buf->base, buf->len);
+
+    HV_FREE(buf);
+}
+
+static int hio_write_kcp_async(hio_t* io, const void* data, size_t len) {
+    hbuf_t* buf = NULL;
+    HV_ALLOC(buf, sizeof(hbuf_t) + len);
+    buf->base = (char*)buf + sizeof(hbuf_t);
+    buf->len = len;
+    memcpy(buf->base, data, len);
+
+    hevent_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.cb = hio_write_kcp_event_cb;
+    ev.userdata = io;
+    ev.privdata = buf;
+    hloop_post_event(io->loop, &ev);
+    return len;
+}
+
 int hio_write_kcp(hio_t* io, const void* buf, size_t len) {
+    if (hv_gettid() != io->loop->tid) {
+        return hio_write_kcp_async(io, buf, len);
+    }
     IUINT32 conv = io->kcp_setting ? io->kcp_setting->conv : 0;
     kcp_t* kcp = hio_get_kcp(io, conv);
+    // printf("hio_write_kcp conv=%u=%u\n", conv, kcp->conv);
     int nsend = ikcp_send(kcp->ikcp, (const char*)buf, len);
     // printf("ikcp_send len=%d nsend=%d\n", (int)len, nsend);
     if (nsend < 0) {
-        hio_close(io);
-    } else {
-        ikcp_update(kcp->ikcp, (IUINT32)io->loop->cur_hrtime / 1000);
+        hloge("ikcp_send error: %d", nsend);
+        return nsend;
     }
-    return nsend;
+    ikcp_update(kcp->ikcp, (IUINT32)io->loop->cur_hrtime / 1000);
+    return len;
 }
 
 int hio_read_kcp (hio_t* io, void* buf, int readbytes) {
     IUINT32 conv = ikcp_getconv(buf);
     kcp_t* kcp = hio_get_kcp(io, conv);
+    // printf("hio_read_kcp conv=%u=%u\n", conv, kcp->conv);
     if (kcp->conv != conv) {
         hloge("recv invalid kcp packet!");
         hio_close_rudp(io, io->peeraddr);
         return -1;
     }
     // printf("ikcp_input len=%d\n", readbytes);
-    ikcp_input(kcp->ikcp, (const char*)buf, readbytes);
+    int ret = ikcp_input(kcp->ikcp, (const char*)buf, readbytes);
+    // printf("ikcp_input ret=%d\n", ret);
+    if (ret != 0) {
+        return 0;
+    }
     if (kcp->readbuf.base == NULL || kcp->readbuf.len == 0) {
         kcp->readbuf.len = DEFAULT_KCP_READ_BUFSIZE;
         HV_ALLOC(kcp->readbuf.base, kcp->readbuf.len);
     }
-    int ret = 0;
     while (1) {
         int nrecv = ikcp_recv(kcp->ikcp, kcp->readbuf.base, kcp->readbuf.len);
         // printf("ikcp_recv nrecv=%d\n", nrecv);

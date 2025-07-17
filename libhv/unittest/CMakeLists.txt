@@ -1,6 +1,9 @@
 add_definitions(-DHV_SOURCE=1)
 
 # ------base------
+add_executable(hbase_test hbase_test.c ../base/hbase.c)
+target_include_directories(hbase_test PRIVATE .. ../base)
+
 add_executable(mkdir_p mkdir_test.c ../base/hbase.c)
 target_include_directories(mkdir_p PRIVATE .. ../base)
 
@@ -44,6 +47,9 @@ target_include_directories(hstring_test PRIVATE .. ../base ../cpputil)
 
 add_executable(hpath_test hpath_test.cpp ../cpputil/hpath.cpp)
 target_include_directories(hpath_test PRIVATE .. ../base ../cpputil)
+
+add_executable(hurl_test hurl_test.cpp ../cpputil/hurl.cpp ../base/hbase.c)
+target_include_directories(hurl_test PRIVATE .. ../base ../cpputil)
 
 add_executable(ls listdir_test.cpp ../cpputil/hdir.cpp)
 target_include_directories(ls PRIVATE .. ../base ../cpputil)
@@ -98,6 +104,7 @@ add_custom_target(unittest DEPENDS
     sha1
     hstring_test
     hpath_test
+    hurl_test
     ls
     ifconfig
     defer_test

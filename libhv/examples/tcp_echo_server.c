@@ -17,6 +17,8 @@
  * #define  TEST_SSL 1
  *
  * @build   ./configure --with-openssl && make clean && make
+ * @server  bin/tcp_echo_server 1234
+ * @client  bin/nc -s 127.0.0.1 1234
  *
  */
 #define TEST_SSL        0
@@ -100,18 +102,7 @@ int main(int argc, char** argv) {
 #if ENABLE_UDS
     if (port == 0) {
         host = argv[1];
-    }
-#endif
-
-#if TEST_SSL
-    hssl_ctx_init_param_t ssl_param;
-    memset(&ssl_param, 0, sizeof(ssl_param));
-    ssl_param.crt_file = "cert/server.crt";
-    ssl_param.key_file = "cert/server.key";
-    ssl_param.endpoint = HSSL_SERVER;
-    if (hssl_ctx_init(&ssl_param) == NULL) {
-        fprintf(stderr, "hssl_ctx_init failed!\n");
-        return -30;
+        port = -1;
     }
 #endif
 
@@ -133,6 +124,18 @@ int main(int argc, char** argv) {
     if (listenio == NULL) {
         return -20;
     }
+#if TEST_SSL
+    hssl_ctx_opt_t ssl_param;
+    memset(&ssl_param, 0, sizeof(ssl_param));
+    ssl_param.crt_file = "cert/server.crt";
+    ssl_param.key_file = "cert/server.key";
+    ssl_param.endpoint = HSSL_SERVER;
+    if (hio_new_ssl_ctx(listenio, &ssl_param) != 0) {
+        fprintf(stderr, "hssl_ctx_new failed!\n");
+        return -30;
+    }
+#endif
+
     printf("listenfd=%d\n", hio_fd(listenio));
     hloop_run(loop);
     hloop_free(&loop);

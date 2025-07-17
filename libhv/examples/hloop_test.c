@@ -61,7 +61,12 @@ void on_stdin(hio_t* io, void* buf, int readbytes) {
 }
 
 void on_custom_events(hevent_t* ev) {
-    printf("on_custom_events event_type=%d userdata=%ld\n", (int)ev->event_type, (long)ev->userdata);
+    printf("on_custom_events event_type=%d userdata=%ld\n", (int)ev->event_type, (long)(intptr_t)ev->userdata);
+}
+
+void on_signal(hsignal_t* sig) {
+    printf("on_signal signo=%d\n", (int)hevent_id(sig));
+    hloop_stop(hevent_loop(sig));
 }
 
 int main() {
@@ -87,10 +92,14 @@ int main() {
     htimer_add_period(loop, cron_minutely, -1, -1, -1, -1, -1, INFINITE);
     htimer_add_period(loop, cron_hourly, minute+1, -1, -1, -1, -1, INFINITE);
 
+    // test signal: enter Ctrl-C to trigger
+    hsignal_add(loop, on_signal, SIGINT);
+
     // test network_logger
     htimer_add(loop, timer_write_log, 1000, INFINITE);
-    logger_set_handler(hlog, mylogger);
+    hlog_set_handler(mylogger);
     hlog_set_file("loop.log");
+    hlog_set_format(DEFAULT_LOG_FORMAT);
 #ifndef _MSC_VER
     logger_enable_color(hlog, 1);
 #endif
@@ -107,7 +116,7 @@ int main() {
         memset(&ev, 0, sizeof(ev));
         ev.event_type = (hevent_type_e)(HEVENT_TYPE_CUSTOM + i);
         ev.cb = on_custom_events;
-        ev.userdata = (void*)(long)i;
+        ev.userdata = (void*)(intptr_t)i;
         hloop_post_event(loop, &ev);
     }
 

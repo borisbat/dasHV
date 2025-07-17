@@ -1,9 +1,13 @@
 /*
  * UdpServer_test.cpp
  *
- * @build: make evpp
+ * @build   make evpp
+ * @server  bin/UdpServer_test 1234
+ * @client  bin/UdpClient_test 1234
  *
  */
+
+#include <iostream>
 
 #include "UdpServer.h"
 
@@ -29,8 +33,19 @@ int main(int argc, char* argv[]) {
     };
     srv.start();
 
-    // press Enter to stop
-    while (getchar() != '\n');
+    std::string str;
+    while (std::getline(std::cin, str)) {
+        if (str == "close") {
+            srv.closesocket();
+        } else if (str == "start") {
+            srv.start();
+        } else if (str == "stop") {
+            srv.stop();
+            break;
+        } else {
+            srv.sendto(str);
+        }
+    }
 
     return 0;
 }

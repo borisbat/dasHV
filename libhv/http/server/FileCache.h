@@ -10,7 +10,7 @@
 #include "hstring.h"
 
 #define HTTP_HEADER_MAX_LENGTH      1024        // 1K
-#define FILE_CACHE_MAX_SIZE         (1 << 26)   // 64M
+#define FILE_CACHE_MAX_SIZE         (1 << 22)   // 4M
 
 typedef struct file_cache_s {
     std::string filepath;
@@ -32,13 +32,11 @@ typedef struct file_cache_s {
     bool is_modified() {
         time_t mtime = st.st_mtime;
         stat(filepath.c_str(), &st);
-        if (mtime == st.st_mtime) {
-            return false;
-        }
-        return true;
+        return mtime != st.st_mtime;
     }
 
     bool is_complete() {
+        if(S_ISDIR(st.st_mode)) return filebuf.len > 0;
         return filebuf.len == st.st_size;
     }
 
@@ -60,19 +58,14 @@ typedef std::shared_ptr<file_cache_t>           file_cache_ptr;
 // filepath => file_cache_ptr
 typedef std::map<std::string, file_cache_ptr>   FileCacheMap;
 
-#define DEFAULT_FILE_STAT_INTERVAL      10 // s
-#define DEFAULT_FILE_EXPIRED_TIME       60 // s
 class FileCache {
 public:
-    int file_stat_interval;
-    int file_expired_time;
     FileCacheMap    cached_files;
     std::mutex      mutex_;
+    int             stat_interval;
+    int             expired_time;
 
-    FileCache() {
-        file_stat_interval = DEFAULT_FILE_STAT_INTERVAL;
-        file_expired_time  = DEFAULT_FILE_EXPIRED_TIME;
-    }
+    FileCache();
 
     struct OpenParam {
         bool need_read;

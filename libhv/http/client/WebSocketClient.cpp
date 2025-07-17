@@ -7,8 +7,8 @@
 
 namespace hv {
 
-WebSocketClient::WebSocketClient()
-    : TcpClientTmpl<WebSocketChannel>()
+WebSocketClient::WebSocketClient(EventLoopPtr loop)
+    : TcpClientTmpl<WebSocketChannel>(loop)
 {
     state = WS_CLOSED;
     ping_interval = DEFAULT_WS_PING_INTERVAL;
@@ -16,7 +16,7 @@ WebSocketClient::WebSocketClient()
 }
 
 WebSocketClient::~WebSocketClient() {
-    close();
+    stop();
 }
 
 /*
@@ -38,19 +38,22 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
         }
     }
     hlogi("%s", url.c_str());
-    http_req_.reset(new HttpRequest);
+    if (!http_req_) {
+        http_req_ = std::make_shared<HttpRequest>();
+    }
     // ws => http
     http_req_->url = "http" + url.substr(2, -1);
     http_req_->ParseUrl();
 
     int connfd = createsocket(http_req_->port, http_req_->host.c_str());
     if (connfd < 0) {
+        hloge("createsocket %s:%d return %d!", http_req_->host.c_str(), http_req_->port, connfd);
         return connfd;
     }
 
     // wss
     bool wss = strncmp(url.c_str(), "wss", 3) == 0;
-    if (wss) {
+    if (wss && !http_req_->IsProxy()) {
         withTLS();
     }
 
@@ -85,7 +88,7 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
             state = WS_UPGRADING;
             // prepare HttpParser
             http_parser_.reset(HttpParser::New(HTTP_CLIENT, HTTP_V1));
-            http_resp_.reset(new HttpResponse);
+            http_resp_ = std::make_shared<HttpResponse>();
             http_parser_->InitResponse(http_resp_.get());
         } else {
             state = WS_CLOSED;
@@ -106,7 +109,22 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
             size -= nparse;
             if (http_parser_->IsComplete()) {
                 if (http_resp_->status_code != HTTP_STATUS_SWITCHING_PROTOCOLS) {
-                    hloge("server side not support websocket!");
+                    // printf("websocket response:\n%s\n", http_resp_->Dump(true, true).c_str());
+                    if (http_req_->redirect && HTTP_STATUS_IS_REDIRECT(http_resp_->status_code)) {
+                        std::string location = http_resp_->headers["Location"];
+                        if (!location.empty()) {
+                            hlogi("redirect %s => %s", http_req_->url.c_str(), location.c_str());
+                            std::string ws_url = location;
+                            if (hv::startswith(location, "http")) {
+                                ws_url = hv::replace(location, "http", "ws");
+                            }
+                            // NOTE: not triggle onclose when redirecting.
+                            channel->onclose = NULL;
+                            open(ws_url.c_str());
+                            return;
+                        }
+                    }
+                    hloge("server side could not upgrade to websocket: status_code=%d", http_resp_->status_code);
                     channel->close();
                     return;
                 }
@@ -119,18 +137,20 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
                     channel->close();
                     return;
                 }
-                ws_parser_.reset(new WebSocketParser);
+                ws_parser_ = std::make_shared<WebSocketParser>();
                 // websocket_onmessage
                 ws_parser_->onMessage = [this, &channel](int opcode, const std::string& msg) {
+                    channel->opcode = (enum ws_opcode)opcode;
                     switch (opcode) {
                     case WS_OPCODE_CLOSE:
+                        channel->send(msg, WS_OPCODE_CLOSE);
                         channel->close();
                         break;
                     case WS_OPCODE_PING:
                     {
                         // printf("recv ping\n");
                         // printf("send pong\n");
-                        channel->write(WS_CLIENT_PONG_FRAME, WS_CLIENT_MIN_FRAME_SIZE);
+                        channel->send(msg, WS_OPCODE_PONG);
                         break;
                     }
                     case WS_OPCODE_PONG:
@@ -158,7 +178,7 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
                             return;
                         }
                         // printf("send ping\n");
-                        channel->write(WS_CLIENT_PING_FRAME, WS_CLIENT_MIN_FRAME_SIZE);
+                        channel->sendPing();
                     });
                 }
                 if (onopen) onopen();
@@ -180,9 +200,7 @@ int WebSocketClient::open(const char* _url, const http_headers& headers) {
 }
 
 int WebSocketClient::close() {
-    if (channel == NULL) return -1;
-    channel->close();
-    stop();
+    closesocket();
     state = WS_CLOSED;
     return 0;
 }

@@ -1,13 +1,17 @@
 list(APPEND EXAMPLES
     hloop_test
     htimer_test
+    pipe_test
     nc
     tinyhttpd
+    tinyproxyd
+    tcp_client_test
     tcp_echo_server
     tcp_chat_server
     tcp_proxy_server
     udp_echo_server
     udp_proxy_server
+    socks5_proxy_server
     jsonrpc_client
     jsonrpc_server
 )
@@ -20,11 +24,20 @@ target_link_libraries(hloop_test ${HV_LIBRARIES})
 add_executable(htimer_test htimer_test.c)
 target_link_libraries(htimer_test ${HV_LIBRARIES})
 
+add_executable(pipe_test pipe_test.c)
+target_link_libraries(pipe_test ${HV_LIBRARIES})
+
 add_executable(nc nc.c)
 target_link_libraries(nc ${HV_LIBRARIES})
 
 add_executable(tinyhttpd tinyhttpd.c)
 target_link_libraries(tinyhttpd ${HV_LIBRARIES})
+
+add_executable(tinyproxyd tinyproxyd.c)
+target_link_libraries(tinyproxyd ${HV_LIBRARIES})
+
+add_executable(tcp_client_test tcp_client_test.c)
+target_link_libraries(tcp_client_test ${HV_LIBRARIES})
 
 add_executable(tcp_echo_server tcp_echo_server.c)
 target_link_libraries(tcp_echo_server ${HV_LIBRARIES})
@@ -41,11 +54,32 @@ target_link_libraries(udp_echo_server ${HV_LIBRARIES})
 add_executable(udp_proxy_server udp_proxy_server.c)
 target_link_libraries(udp_proxy_server ${HV_LIBRARIES})
 
+add_executable(socks5_proxy_server socks5_proxy_server.c)
+target_link_libraries(socks5_proxy_server ${HV_LIBRARIES})
+
 add_executable(jsonrpc_client jsonrpc/jsonrpc_client.c jsonrpc/cJSON.c)
+target_compile_definitions(jsonrpc_client PRIVATE CJSON_HIDE_SYMBOLS)
 target_link_libraries(jsonrpc_client ${HV_LIBRARIES})
 
 add_executable(jsonrpc_server jsonrpc/jsonrpc_server.c jsonrpc/cJSON.c)
+target_compile_definitions(jsonrpc_server PRIVATE CJSON_HIDE_SYMBOLS)
 target_link_libraries(jsonrpc_server ${HV_LIBRARIES})
+
+if(WITH_KCP)
+    glob_headers_and_sources(KCPTUN_SMUX_FILES   kcptun/smux)
+    glob_headers_and_sources(KCPTUN_CLIENT_FILES kcptun/client)
+    glob_headers_and_sources(KCPTUN_SERVER_FILES kcptun/server)
+
+    # kcptun_client
+    add_executable(kcptun_client ${KCPTUN_SMUX_FILES} ${KCPTUN_CLIENT_FILES})
+    target_link_libraries(kcptun_client ${HV_LIBRARIES})
+
+    # kcptun_server
+    add_executable(kcptun_server ${KCPTUN_SMUX_FILES} ${KCPTUN_SERVER_FILES})
+    target_link_libraries(kcptun_server ${HV_LIBRARIES})
+
+    list(APPEND EXAMPLES kcptun_client kcptun_server)
+endif()
 
 if(WITH_EVPP)
     include_directories(../cpputil ../evpp)
@@ -127,6 +161,21 @@ if(WITH_HTTP_CLIENT)
 endif()
 
 endif()
+endif()
+
+if(WITH_MQTT)
+    include_directories(../mqtt)
+
+    add_executable(mqtt_sub mqtt/mqtt_sub.c)
+    target_link_libraries(mqtt_sub ${HV_LIBRARIES})
+
+    add_executable(mqtt_pub mqtt/mqtt_pub.c)
+    target_link_libraries(mqtt_pub ${HV_LIBRARIES})
+
+    add_executable(mqtt_client_test mqtt/mqtt_client_test.cpp)
+    target_link_libraries(mqtt_client_test ${HV_LIBRARIES})
+
+    list(APPEND EXAMPLES mqtt_sub mqtt_pub mqtt_client_test)
 endif()
 
 add_custom_target(examples DEPENDS ${EXAMPLES})

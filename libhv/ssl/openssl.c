@@ -1,5 +1,5 @@
 #include "hssl.h"
-
+#include "hlog.h"
 #ifdef WITH_OPENSSL
 
 #include "openssl/ssl.h"
@@ -13,7 +13,7 @@ const char* hssl_backend() {
     return "openssl";
 }
 
-hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
+hssl_ctx_t hssl_ctx_new(hssl_ctx_opt_t* param) {
     static int s_initialized = 0;
     if (s_initialized == 0) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -49,7 +49,7 @@ hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
         }
 
         if (param->crt_file && *param->crt_file) {
-            if (!SSL_CTX_use_certificate_file(ctx, param->crt_file, SSL_FILETYPE_PEM)) {
+            if (!SSL_CTX_use_certificate_chain_file(ctx, param->crt_file)) {
                 fprintf(stderr, "ssl crt_file error!\n");
                 goto error;
             }
@@ -68,25 +68,27 @@ hssl_ctx_t hssl_ctx_init(hssl_ctx_init_param_t* param) {
 
         if (param->verify_peer) {
             mode = SSL_VERIFY_PEER;
+            if (param->endpoint == HSSL_SERVER) {
+                mode |= SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
+            }
         }
     }
     if (mode == SSL_VERIFY_PEER && !ca_file && !ca_path) {
         SSL_CTX_set_default_verify_paths(ctx);
     }
-    SSL_CTX_set_verify(ctx, mode, NULL);
 
-    g_ssl_ctx = ctx;
+#ifdef SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER
+    SSL_CTX_set_mode(ctx, SSL_CTX_get_mode(ctx) | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+#endif
+    SSL_CTX_set_verify(ctx, mode, NULL);
     return ctx;
 error:
     SSL_CTX_free(ctx);
     return NULL;
 }
 
-void hssl_ctx_cleanup(hssl_ctx_t ssl_ctx) {
+void hssl_ctx_free(hssl_ctx_t ssl_ctx) {
     if (!ssl_ctx) return;
-    if (g_ssl_ctx == ssl_ctx) {
-        g_ssl_ctx = NULL;
-    }
     SSL_CTX_free((SSL_CTX*)ssl_ctx);
 }
 
@@ -115,6 +117,12 @@ int hssl_accept(hssl_t ssl) {
     else if (err == SSL_ERROR_WANT_WRITE) {
         return HSSL_WANT_WRITE;
     }
+    else if (err == SSL_ERROR_SYSCALL) {
+        hloge("SSL_accept errno:%d,error:%s", errno, strerror(errno));
+    }
+    else {
+        hloge("SSL_accept: %s", ERR_error_string(ERR_get_error(), NULL));
+    }
     return err;
 }
 
@@ -128,6 +136,12 @@ int hssl_connect(hssl_t ssl) {
     }
     else if (err == SSL_ERROR_WANT_WRITE) {
         return HSSL_WANT_WRITE;
+    }
+    else if (err == SSL_ERROR_SYSCALL) {
+        hloge("SSL_connect errno:%d,error:%s", errno, strerror(errno));
+    }
+    else {
+        hloge("SSL_connect: %s", ERR_error_string(ERR_get_error(), NULL));
     }
     return err;
 }
@@ -150,6 +164,37 @@ int hssl_set_sni_hostname(hssl_t ssl, const char* hostname) {
     SSL_set_tlsext_host_name((SSL*)ssl, hostname);
 #endif
     return 0;
+}
+
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+static int hssl_ctx_alpn_select_cb(SSL *ssl,
+    const unsigned char **out, unsigned char *outlen,
+    const unsigned char *in, unsigned int inlen,
+    void *arg) {
+    const unsigned char* protos = (unsigned char*)arg;
+    unsigned int protos_len = strlen((char*)protos);
+    // printf("hssl_ctx_alpn_select_cb(in=%*.s:%u out=%.*s:%u protos=%.*s:%u)\n", inlen, in, inlen, (int)*outlen, (char*)out, (int)*outlen, protos_len, protos, protos_len);
+    if (SSL_select_next_proto((unsigned char **) out, outlen, protos, protos_len, in, inlen) != OPENSSL_NPN_NEGOTIATED) {
+        fprintf(stderr, "SSL_select_next_proto failed!\n");
+        return SSL_TLSEXT_ERR_ALERT_FATAL;
+    }
+    // printf("SSL_select_next_proto(out=%.*s:%u)\n", (int)*outlen, (char*)*out, (int)*outlen);
+    return SSL_TLSEXT_ERR_OK;
+}
+#endif
+
+int hssl_ctx_set_alpn_protos(hssl_ctx_t ssl_ctx, const unsigned char* protos, unsigned int protos_len) {
+    int ret = -1;
+    // printf("hssl_ctx_set_alpn_protos(%.*s:%u)\n", protos_len, protos, protos_len);
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+    // for HSSL_CLIENT
+    // ret = SSL_CTX_set_alpn_protos((SSL_CTX*)ssl_ctx, (const unsigned char*)protos, protos_len);
+
+    // for HSSL_SERVER
+    SSL_CTX_set_alpn_select_cb((SSL_CTX*)ssl_ctx, hssl_ctx_alpn_select_cb, (void*)protos);
+    ret = 0;
+#endif
+    return ret;
 }
 
 #endif // WITH_OPENSSL

@@ -7,6 +7,7 @@
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketClient,hv::WebSocketClient)
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketServer,hv::WebSocketServer)
 MAKE_EXTERNAL_TYPE_FACTORY(WebSocketChannel,hv::WebSocketChannel)
+MAKE_EXTERNAL_TYPE_FACTORY(HttpMessage,HttpMessage)
 MAKE_EXTERNAL_TYPE_FACTORY(HttpRequest,HttpRequest)
 MAKE_EXTERNAL_TYPE_FACTORY(HttpResponse,HttpResponse)
 MAKE_EXTERNAL_TYPE_FACTORY(HttpContext,hv::HttpContext)

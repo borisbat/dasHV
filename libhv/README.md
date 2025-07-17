@@ -2,15 +2,19 @@ English | [中文](README-CN.md)
 
 # libhv
 
-[![platform](https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-blue)](.github/workflows/CI.yml)
-[![CI](https://github.com/ithewei/libhv/workflows/CI/badge.svg?branch=master)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Linux](https://badgen.net/badge/Linux/success/green?icon=github)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Windows](https://badgen.net/badge/Windows/success/green?icon=github)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
+[![macOS](https://badgen.net/badge/macOS/success/green?icon=github)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Android](https://badgen.net/badge/Android/success/green?icon=github)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
+[![iOS](https://badgen.net/badge/iOS/success/green?icon=github)](https://github.com/ithewei/libhv/actions/workflows/CI.yml?query=branch%3Amaster)
 [![benchmark](https://github.com/ithewei/libhv/workflows/benchmark/badge.svg?branch=master)](https://github.com/ithewei/libhv/actions/workflows/benchmark.yml?query=branch%3Amaster)
 <br>
 [![release](https://badgen.net/github/release/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/releases)
 [![stars](https://badgen.net/github/stars/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/stargazers)
-[![forks](https://badgen.net/github/forks/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/network/members)
+[![forks](https://badgen.net/github/forks/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/forks)
 [![issues](https://badgen.net/github/issues/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/issues)
 [![PRs](https://badgen.net/github/prs/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/pulls)
+[![contributors](https://badgen.net/github/contributors/ithewei/libhv?icon=github)](https://github.com/ithewei/libhv/contributors)
 [![license](https://badgen.net/github/license/ithewei/libhv?icon=github)](LICENSE)
 <br>
 [![gitee](https://badgen.net/badge/mirror/gitee/red)](https://gitee.com/libhv/libhv)
@@ -23,16 +27,18 @@ but simpler api and richer protocols.
 
 ## ✨ Features
 
-- Cross-platform (Linux, Windows, MacOS, Solaris)
-- High-performance EventLoop (IO, timer, idle, custom)
+- Cross-platform (Linux, Windows, macOS, Android, iOS, BSD, Solaris)
+- High-performance EventLoop (IO, timer, idle, custom, signal)
 - TCP/UDP client/server/proxy
-- TCP supports heartbeat, upstream, unpack, MultiThread-safe write and close, etc.
+- TCP supports heartbeat, reconnect, upstream, MultiThread-safe write and close, etc.
+- Built-in common unpacking modes (FixedLength, Delimiter, LengthField)
 - RUDP support: WITH_KCP
 - SSL/TLS support: (via WITH_OPENSSL or WITH_GNUTLS or WITH_MBEDTLS)
 - HTTP client/server (support https http1/x http2 grpc)
-- HTTP static file service, indexof service, sync/async API handler
-- HTTP supports RESTful, URI router, keep-alive, chunked, etc.
+- HTTP supports static service, indexof service, forward/reverse proxy service, sync/async API handler
+- HTTP supports RESTful, router, middleware, keep-alive, chunked, SSE, etc.
 - WebSocket client/server
+- MQTT client
 
 ## ⌛️ Build
 
@@ -53,6 +59,11 @@ cmake ..
 cmake --build .
 ```
 
+or bazel:
+```shell
+bazel build libhv
+```
+
 or vcpkg:
 ```shell
 vcpkg install libhv
@@ -70,6 +81,7 @@ run `./getting_started.sh`:
 ```shell
 git clone https://github.com/ithewei/libhv.git
 cd libhv
+./configure
 make
 
 bin/httpd -h
@@ -89,12 +101,13 @@ bin/curl -v localhost:8080/echo -d "hello,world!"
 bin/curl -v localhost:8080/query?page_no=1\&page_size=10
 bin/curl -v localhost:8080/kv   -H "Content-Type:application/x-www-form-urlencoded" -d 'user=admin&pswd=123456'
 bin/curl -v localhost:8080/json -H "Content-Type:application/json" -d '{"user":"admin","pswd":"123456"}'
-bin/curl -v localhost:8080/form -F "user=admin pswd=123456"
+bin/curl -v localhost:8080/form -F 'user=admin' -F 'pswd=123456'
+bin/curl -v localhost:8080/upload -d "@LICENSE"
 bin/curl -v localhost:8080/upload -F "file=@LICENSE"
 
 bin/curl -v localhost:8080/test -H "Content-Type:application/x-www-form-urlencoded" -d 'bool=1&int=123&float=3.14&string=hello'
 bin/curl -v localhost:8080/test -H "Content-Type:application/json" -d '{"bool":true,"int":123,"float":3.14,"string":"hello"}'
-bin/curl -v localhost:8080/test -F 'bool=1 int=123 float=3.14 string=hello'
+bin/curl -v localhost:8080/test -F 'bool=1' -F 'int=123' -F 'float=3.14' -F 'string=hello'
 # RESTful API: /group/:group_name/user/:user_id
 bin/curl -v -X DELETE localhost:8080/group/test/user/123
 
@@ -105,36 +118,6 @@ bin/wrk -c 1000 -d 10 -t 4 http://127.0.0.1:8080/
 ### TCP
 #### tcp server
 **c version**: [examples/tcp_echo_server.c](examples/tcp_echo_server.c)
-```c
-#include "hloop.h"
-
-static void on_close(hio_t* io) {
-    printf("on_close fd=%d error=%d\n", hio_fd(io), hio_error(io));
-}
-
-static void on_recv(hio_t* io, void* buf, int readbytes) {
-    // echo
-    hio_write(io, buf, readbytes);
-}
-
-static void on_accept(hio_t* io) {
-    hio_setcb_close(io, on_close);
-    hio_setcb_read(io, on_recv);
-    hio_read(io);
-}
-
-int main() {
-    int port = 1234;
-    hloop_t* loop = hloop_new(0);
-    hio_t* listenio = hloop_create_tcp_server(loop, "0.0.0.0", port, on_accept);
-    if (listenio == NULL) {
-        return -1;
-    }
-    hloop_run(loop);
-    hloop_free(&loop);
-    return 0;
-}
-```
 
 **c++ version**: [evpp/TcpServer_test.cpp](evpp/TcpServer_test.cpp)
 ```c++
@@ -164,51 +147,18 @@ int main() {
     srv.setThreadNum(4);
     srv.start();
 
-    while (1) hv_sleep(1);
+    // press Enter to stop
+    while (getchar() != '\n');
     return 0;
 }
 ```
 
 #### tcp client
-**c version**: [examples/nc.c](examples/nc.c)
-```c
-#include "hloop.h"
-
-static void on_close(hio_t* io) {
-    printf("on_close fd=%d error=%d\n", hio_fd(io), hio_error(io));
-}
-
-static void on_recv(hio_t* io, void* buf, int readbytes) {
-    printf("< %.*s\n", readbytes, (char*)buf);
-}
-
-static void on_connect(hio_t* io) {
-    hio_setcb_read(io, on_recv);
-    hio_read(io);
-
-    hio_write(io, "hello", 5);
-}
-
-int main() {
-    const char host[] = "127.0.0.1";
-    int port = 1234;
-    hloop_t* loop = hloop_new(0);
-    hio_t* io = hio_create_socket(loop, host, port, HIO_TYPE_TCP, HIO_CLIENT_SIDE);
-    if (io == NULL) {
-        perror("socket");
-        exit(1);
-    }
-    hio_setcb_connect(io, on_connect);
-    hio_setcb_close(io, on_close);
-    hio_connect(io);
-    hloop_run(loop);
-    hloop_free(&loop);
-    return 0;
-}
-```
+**c version**: [examples/tcp_client_test.c](examples/tcp_client_test.c)
 
 **c++ version**: [evpp/TcpClient_test.cpp](evpp/TcpClient_test.cpp)
 ```c++
+#include <iostream>
 #include "TcpClient.h"
 using namespace hv;
 
@@ -223,7 +173,6 @@ int main() {
         std::string peeraddr = channel->peeraddr();
         if (channel->isConnected()) {
             printf("connected to %s! connfd=%d\n", peeraddr.c_str(), channel->fd());
-            channel->write("hello");
         } else {
             printf("disconnected to %s! connfd=%d\n", peeraddr.c_str(), channel->fd());
         }
@@ -233,7 +182,20 @@ int main() {
     };
     cli.start();
 
-    while (1) hv_sleep(1);
+    std::string str;
+    while (std::getline(std::cin, str)) {
+        if (str == "close") {
+            cli.closesocket();
+        } else if (str == "start") {
+            cli.start();
+        } else if (str == "stop") {
+            cli.stop();
+            break;
+        } else {
+            if (!cli.isConnected()) break;
+            cli.send(str);
+        }
+    }
     return 0;
 }
 ```
@@ -245,6 +207,7 @@ see [examples/http_server_test.cpp](examples/http_server_test.cpp)
 **golang gin style**
 ```c++
 #include "HttpServer.h"
+using namespace hv;
 
 int main() {
     HttpService router;
@@ -273,10 +236,10 @@ int main() {
         return ctx->send(ctx->body(), ctx->type());
     });
 
-    http_server_t server;
-    server.port = 8080;
-    server.service = &router;
-    http_server_run(&server);
+    HttpServer server(&router);
+    server.setPort(8080);
+    server.setThreadNum(4);
+    server.run();
     return 0;
 }
 ```
@@ -306,48 +269,71 @@ int main() {
 }
 ```
 
-**js axios style**
+### WebSocket
+#### WebSocket server
+see [examples/websocket_server_test.cpp](examples/websocket_server_test.cpp)
 ```c++
-#include "axios.h"
+#include "WebSocketServer.h"
+using namespace hv;
 
-int main() {
-    const char* strReq = R"({
-        "method": "POST",
-        "url": "http://127.0.0.1:8080/echo",
-        "params": {
-            "page_no": "1",
-            "page_size": "10"
-        },
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": {
-            "app_id": "123456",
-            "app_secret": "abcdefg"
+int main(int argc, char** argv) {
+    WebSocketService ws;
+    ws.onopen = [](const WebSocketChannelPtr& channel, const HttpRequestPtr& req) {
+        printf("onopen: GET %s\n", req->Path().c_str());
+    };
+    ws.onmessage = [](const WebSocketChannelPtr& channel, const std::string& msg) {
+        printf("onmessage: %.*s\n", (int)msg.size(), msg.data());
+    };
+    ws.onclose = [](const WebSocketChannelPtr& channel) {
+        printf("onclose\n");
+    };
+
+    WebSocketServer server(&ws);
+    server.setPort(9999);
+    server.setThreadNum(4);
+    server.run();
+    return 0;
+}
+```
+
+#### WebSocket client
+see [examples/websocket_client_test.cpp](examples/websocket_client_test.cpp)
+```c++
+#include "WebSocketClient.h"
+using namespace hv;
+
+int main(int argc, char** argv) {
+    WebSocketClient ws;
+    ws.onopen = []() {
+        printf("onopen\n");
+    };
+    ws.onmessage = [](const std::string& msg) {
+        printf("onmessage: %.*s\n", (int)msg.size(), msg.data());
+    };
+    ws.onclose = []() {
+        printf("onclose\n");
+    };
+
+    // reconnect: 1,2,4,8,10,10,10...
+    reconn_setting_t reconn;
+    reconn_setting_init(&reconn);
+    reconn.min_delay = 1000;
+    reconn.max_delay = 10000;
+    reconn.delay_policy = 2;
+    ws.setReconnect(&reconn);
+
+    ws.open("ws://127.0.0.1:9999/test");
+
+    std::string str;
+    while (std::getline(std::cin, str)) {
+        if (!ws.isConnected()) break;
+        if (str == "quit") {
+            ws.close();
+            break;
         }
-    })";
-
-    // sync
-    auto resp = axios::axios(strReq);
-    if (resp == NULL) {
-        printf("request failed!\n");
-    } else {
-        printf("%s\n", resp->body.c_str());
+        ws.send(str);
     }
 
-    // async
-    int finished = 0;
-    axios::axios(strReq, [&finished](const HttpResponsePtr& resp) {
-        if (resp == NULL) {
-            printf("request failed!\n");
-        } else {
-            printf("%s\n", resp->body.c_str());
-        }
-        finished = 1;
-    });
-
-    // wait async finished
-    while (!finished) hv_sleep(1);
     return 0;
 }
 ```
@@ -355,13 +341,18 @@ int main() {
 ## 🍭 More examples
 ### c version
 - [examples/hloop_test.c](examples/hloop_test.c)
+- [examples/htimer_test.c](examples/htimer_test.c)
+- [examples/pipe_test.c](examples/pipe_test.c)
 - [examples/tcp_echo_server.c](examples/tcp_echo_server.c)
 - [examples/tcp_chat_server.c](examples/tcp_chat_server.c)
 - [examples/tcp_proxy_server.c](examples/tcp_proxy_server.c)
 - [examples/udp_echo_server.c](examples/udp_echo_server.c)
 - [examples/udp_proxy_server.c](examples/udp_proxy_server.c)
+- [examples/socks5_proxy_server.c](examples/socks5_proxy_server.c)
 - [examples/tinyhttpd.c](examples/tinyhttpd.c)
+- [examples/tinyproxyd.c](examples/tinyproxyd.c)
 - [examples/jsonrpc](examples/jsonrpc)
+- [examples/mqtt](examples/mqtt)
 - [examples/multi-thread/multi-acceptor-processes.c](examples/multi-thread/multi-acceptor-processes.c)
 - [examples/multi-thread/multi-acceptor-threads.c](examples/multi-thread/multi-acceptor-threads.c)
 - [examples/multi-thread/one-acceptor-multi-workers.c](examples/multi-thread/one-acceptor-multi-workers.c)
@@ -370,6 +361,7 @@ int main() {
 - [evpp/EventLoop_test.cpp](evpp/EventLoop_test.cpp)
 - [evpp/EventLoopThread_test.cpp](evpp/EventLoopThread_test.cpp)
 - [evpp/EventLoopThreadPool_test.cpp](evpp/EventLoopThreadPool_test.cpp)
+- [evpp/TimerThread_test.cpp](evpp/TimerThread_test.cpp)
 - [evpp/TcpServer_test.cpp](evpp/TcpServer_test.cpp)
 - [evpp/TcpClient_test.cpp](evpp/TcpClient_test.cpp)
 - [evpp/UdpServer_test.cpp](evpp/UdpServer_test.cpp)
@@ -379,7 +371,7 @@ int main() {
 - [examples/websocket_server_test.cpp](examples/websocket_server_test.cpp)
 - [examples/websocket_client_test.cpp](examples/websocket_client_test.cpp)
 - [examples/protorpc](examples/protorpc)
-- [examples/qt](examples/qt)
+- [hv-projects/QtDemo](https://github.com/hv-projects/QtDemo)
 
 ### simulate well-known command line tools
 - [examples/nc](examples/nc.c)
@@ -389,9 +381,10 @@ int main() {
 - [examples/curl](examples/curl.cpp)
 - [examples/wget](examples/wget.cpp)
 - [examples/consul](examples/consul)
+- [examples/kcptun](examples/kcptun)
 
 ## 🥇 Benchmark
-### tcp benchmark
+### `pingpong echo-servers`
 ```shell
 cd echo-servers
 ./build.sh
@@ -438,7 +431,29 @@ total readcount=1699652 readbytes=1740443648
 throughput = 165 MB/s
 ```
 
-### http benchmark
+### `iperf tcp_proxy_server`
+```shell
+# sudo apt install iperf
+iperf -s -p 5001 > /dev/null &
+bin/tcp_proxy_server 1212 127.0.0.1:5001 &
+iperf -c 127.0.0.1 -p 5001 -l 8K
+iperf -c 127.0.0.1 -p 1212 -l 8K
+```
+
+**Bandwidth**:
+```shell
+------------------------------------------------------------
+[  3] local 127.0.0.1 port 52560 connected with 127.0.0.1 port 5001
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  20.8 GBytes  17.9 Gbits/sec
+
+------------------------------------------------------------
+[  3] local 127.0.0.1 port 48142 connected with 127.0.0.1 port 1212
+[ ID] Interval       Transfer     Bandwidth
+[  3]  0.0-10.0 sec  11.9 GBytes  10.2 Gbits/sec
+```
+
+### `webbench`
 ```shell
 # sudo apt install wrk
 wrk -c 100 -t 4 -d 10s http://127.0.0.1:8080/

@@ -49,7 +49,7 @@ static int on_frame_end(websocket_parser* parser) {
     return 0;
 }
 
-websocket_parser_settings WebSocketParser::cbs = {
+static websocket_parser_settings cbs = {
     on_frame_header,
     on_frame_body,
     on_frame_end
@@ -60,6 +60,7 @@ WebSocketParser::WebSocketParser() {
     websocket_parser_init(parser);
     parser->data = this;
     state = WS_FRAME_BEGIN;
+    opcode = WS_OP_CLOSE;
 }
 
 WebSocketParser::~WebSocketParser() {

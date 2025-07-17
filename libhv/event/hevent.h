@@ -17,7 +17,7 @@
 #define READ_BUFSIZE_HIGH_WATER     65536       // 64K
 #define WRITE_BUFSIZE_HIGH_WATER    (1U << 23)  // 8M
 #define MAX_READ_BUFSIZE            (1U << 24)  // 16M
-#define MAX_WRITE_BUFSIZE           (1U << 26)  // 64M
+#define MAX_WRITE_BUFSIZE           (1U << 24)  // 16M
 
 // hio_read_flags
 #define HIO_READ_ONCE           0x1
@@ -25,6 +25,7 @@
 #define HIO_READ_UNTIL_DELIM    0x4
 
 ARRAY_DECL(hio_t*, io_array);
+ARRAY_DECL(hsignal_t*, signal_array);
 QUEUE_DECL(hevent_t, event_queue);
 
 struct hloop_s {
@@ -45,11 +46,15 @@ struct hloop_s {
     uint32_t                    npendings;
     // pendings: with priority as array.index
     hevent_t*                   pendings[HEVENT_PRIORITY_SIZE];
+    // signals
+    struct signal_array         signals;
+    uint32_t                    nsignals;
     // idles
     struct list_head            idles;
     uint32_t                    nidles;
     // timers
-    struct heap                 timers;
+    struct heap                 timers;     // monotonic time
+    struct heap                 realtimers; // realtime
     uint32_t                    ntimers;
     // ios: with fd as array.index
     struct io_array             ios;
@@ -58,7 +63,7 @@ struct hloop_s {
     hbuf_t                      readbuf;
     void*                       iowatcher;
     // custom_events
-    int                         sockpair[2];
+    int                         eventfds[2];
     event_queue                 custom_events;
     hmutex_t                    custom_events_mutex;
 };
@@ -97,11 +102,12 @@ struct hperiod_s {
 };
 
 QUEUE_DECL(offset_buf_t, write_queue);
-// sizeof(struct hio_s)=400 on linux-x64
+// sizeof(struct hio_s)=416 on linux-x64
 struct hio_s {
     HEVENT_FIELDS
     // flags
     unsigned    ready       :1;
+    unsigned    connected   :1;
     unsigned    closed      :1;
     unsigned    accept      :1;
     unsigned    connect     :1;
@@ -112,6 +118,7 @@ struct hio_s {
     unsigned    sendto      :1;
     unsigned    close       :1;
     unsigned    alloced_readbuf :1; // for hio_alloc_readbuf
+    unsigned    alloced_ssl_ctx :1; // for hio_new_ssl_ctx
 // public:
     hio_type_e  io_type;
     uint32_t    id; // fd cannot be used as unique identifier, so we provide an id
@@ -131,11 +138,13 @@ struct hio_s {
         unsigned int    read_until_length;
         unsigned char   read_until_delim;
     };
+    uint32_t            max_read_bufsize;
     uint32_t            small_readbytes_cnt; // for readbuf autosize
     // write
     struct write_queue  write_queue;
     hrecursive_mutex_t  write_mutex; // lock write and write_queue
     uint32_t            write_bufsize;
+    uint32_t            max_write_bufsize;
     // callbacks
     hread_cb    read_cb;
     hwrite_cb   write_cb;
@@ -161,7 +170,9 @@ struct hio_s {
     // unpack
     unpack_setting_t*   unpack_setting; // for hio_set_unpack
     // ssl
-    void*       ssl; // for hio_enable_ssl / hio_set_ssl
+    void*       ssl;        // for hio_set_ssl
+    void*       ssl_ctx;    // for hio_set_ssl_ctx
+    char*       hostname;   // for hssl_set_sni_hostname
     // context
     void*       ctx; // for hio_context / hio_set_context
 // private:
@@ -184,10 +195,11 @@ struct hio_s {
  * hio lifeline:
  *
  * fd =>
- * hio_get => HV_ALLOC_SIZEOF(io) => hio_init =>
+ * hio_get => HV_ALLOC_SIZEOF(io) => hio_init => hio_ready
  *
- * hio_ready => hio_add => hio_read_cb/hio_write_cb =>
- * hio_close => hio_done => hio_close_cb =>
+ * hio_read  => hio_add(HV_READ) => hio_read_cb
+ * hio_write => hio_add(HV_WRITE) => hio_write_cb
+ * hio_close => hio_done => hio_del(HV_RDWR) => hio_close_cb
  *
  * hloop_stop => hloop_free => hio_free => HV_FREE(io)
  */
@@ -211,6 +223,15 @@ void hio_del_write_timer(hio_t* io);
 void hio_del_keepalive_timer(hio_t* io);
 void hio_del_heartbeat_timer(hio_t* io);
 
+static inline void hio_use_loop_readbuf(hio_t* io) {
+    hloop_t* loop = io->loop;
+    if (loop->readbuf.len == 0) {
+        loop->readbuf.len = HLOOP_READ_BUFSIZE;
+        HV_ALLOC(loop->readbuf.base, loop->readbuf.len);
+    }
+    io->readbuf.base = loop->readbuf.base;
+    io->readbuf.len  = loop->readbuf.len;
+}
 static inline bool hio_is_loop_readbuf(hio_t* io) {
     return io->readbuf.base == io->loop->readbuf.base;
 }
@@ -219,6 +240,7 @@ static inline bool hio_is_alloced_readbuf(hio_t* io) {
 }
 void hio_alloc_readbuf(hio_t* io, int len);
 void hio_free_readbuf(hio_t* io);
+void hio_memmove_readbuf(hio_t* io);
 
 #define EVENT_ENTRY(p)          container_of(p, hevent_t, pending_node)
 #define IDLE_ENTRY(p)           container_of(p, hidle_t,  node)

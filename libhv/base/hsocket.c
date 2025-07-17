@@ -20,8 +20,9 @@ void WSADeinit() {
 }
 #endif
 
-static inline int socket_errno_negative() {
+static inline int socket_errno_negative(int sockfd) {
     int err = socket_errno();
+    if (sockfd >= 0) closesocket(sockfd);
     return err > 0 ? -err : -1;
 }
 
@@ -59,32 +60,24 @@ int ResolveAddr(const char* host, sockaddr_u* addr) {
         return 0;
     }
 
-#ifdef ENABLE_IPV6
     if (inet_pton(AF_INET6, host, &addr->sin6.sin6_addr) == 1) {
         addr->sa.sa_family = AF_INET6; // host is ipv6
     }
+
     struct addrinfo* ais = NULL;
-    struct addrinfo hint;
-    hint.ai_flags = 0;
-    hint.ai_family = AF_UNSPEC;
-    hint.ai_socktype = 0;
-    hint.ai_protocol = 0;
     int ret = getaddrinfo(host, NULL, NULL, &ais);
-    if (ret != 0 || ais == NULL || ais->ai_addrlen == 0 || ais->ai_addr == NULL) {
+    if (ret != 0 || ais == NULL || ais->ai_addr == NULL || ais->ai_addrlen == 0) {
         printd("unknown host: %s err:%d:%s\n", host, ret, gai_strerror(ret));
         return ret;
     }
-    memcpy(addr, ais->ai_addr, ais->ai_addrlen);
-    freeaddrinfo(ais);
-#else
-    struct hostent* phe = gethostbyname(host);
-    if (phe == NULL) {
-        printd("unknown host %s err:%d\n", host, h_errno);
-        return -h_errno;
+    struct addrinfo* pai = ais;
+    while (pai != NULL) {
+        if (pai->ai_family == AF_INET) break;
+        pai = pai->ai_next;
     }
-    addr->sin.sin_family = AF_INET;
-    memcpy(&addr->sin.sin_addr, phe->h_addr_list[0], phe->h_length);
-#endif
+    if (pai == NULL) pai = ais;
+    memcpy(addr, pai->ai_addr, pai->ai_addrlen);
+    freeaddrinfo(ais);
     return 0;
 }
 
@@ -129,7 +122,7 @@ void sockaddr_set_port(sockaddr_u* addr, int port) {
 
 int sockaddr_set_ipport(sockaddr_u* addr, const char* host, int port) {
 #ifdef ENABLE_UDS
-    if (port <= 0) {
+    if (port < 0) {
         sockaddr_set_path(addr, host);
         return 0;
     }
@@ -177,38 +170,45 @@ const char* sockaddr_str(sockaddr_u* addr, char* buf, int len) {
     return buf;
 }
 
+int sockaddr_compare(const sockaddr_u* addr1, const sockaddr_u* addr2) {
+    if (addr1->sa.sa_family != addr2->sa.sa_family)
+        return addr1->sa.sa_family - addr2->sa.sa_family;
+    if (addr1->sa.sa_family == AF_INET) {
+        if (addr1->sin.sin_family != addr2->sin.sin_family)
+            return addr1->sin.sin_family - addr2->sin.sin_family;
+        if (addr1->sin.sin_port != addr2->sin.sin_port)
+            return addr1->sin.sin_port - addr2->sin.sin_port;
+        return memcmp(&addr1->sin.sin_addr, &addr2->sin.sin_addr, sizeof(struct in_addr));
+    }
+    else if (addr1->sa.sa_family == AF_INET6) {
+        if (addr1->sin6.sin6_family != addr2->sin6.sin6_family)
+            return addr1->sin6.sin6_family - addr2->sin6.sin6_family;
+        if (addr1->sin6.sin6_port != addr2->sin6.sin6_port)
+            return addr1->sin6.sin6_port - addr2->sin6.sin6_port;
+        return memcmp(&addr1->sin6.sin6_addr, &addr2->sin6.sin6_addr, sizeof(struct in_addr));
+    }
+    return memcmp(addr1, addr2, sizeof(sockaddr_u));
+}
+
 static int sockaddr_bind(sockaddr_u* localaddr, int type) {
     // socket -> setsockopt -> bind
+#ifdef SOCK_CLOEXEC
+    type |= SOCK_CLOEXEC;
+#endif
     int sockfd = socket(localaddr->sa.sa_family, type, 0);
     if (sockfd < 0) {
         perror("socket");
-        return socket_errno_negative();
+        goto error;
     }
 
-
-#ifdef SO_REUSEADDR
-    {
-        // NOTE: SO_REUSEADDR allow to reuse sockaddr of TIME_WAIT status
-        int reuseaddr = 1;
-        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuseaddr, sizeof(int)) < 0) {
-            perror("setsockopt");
-            goto error;
-        }
-    }
+#ifdef OS_UNIX
+    so_reuseaddr(sockfd, 1);
+    // so_reuseport(sockfd, 1);
 #endif
 
-/*
-#ifdef SO_REUSEPORT
-    {
-        // NOTE: SO_REUSEPORT allow multiple sockets to bind same port
-        int reuseport = 1;
-        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuseport, sizeof(int)) < 0) {
-            perror("setsockopt");
-            goto error;
-        }
+    if (localaddr->sa.sa_family == AF_INET6) {
+        ip_v6only(sockfd, 0);
     }
-#endif
-*/
 
     if (bind(sockfd, &localaddr->sa, sockaddr_len(localaddr)) < 0) {
         perror("bind");
@@ -217,47 +217,48 @@ static int sockaddr_bind(sockaddr_u* localaddr, int type) {
 
     return sockfd;
 error:
-    closesocket(sockfd);
-    return socket_errno_negative();
+    return socket_errno_negative(sockfd);
 }
 
 static int sockaddr_connect(sockaddr_u* peeraddr, int nonblock) {
     // socket -> nonblocking -> connect
+    int ret = 0;
     int connfd = socket(peeraddr->sa.sa_family, SOCK_STREAM, 0);
     if (connfd < 0) {
         perror("socket");
-        return socket_errno_negative();
+        goto error;
     }
 
     if (nonblock) {
         nonblocking(connfd);
     }
 
-    int ret = connect(connfd, &peeraddr->sa, sockaddr_len(peeraddr));
+    ret = connect(connfd, &peeraddr->sa, sockaddr_len(peeraddr));
 #ifdef OS_WIN
     if (ret < 0 && socket_errno() != WSAEWOULDBLOCK) {
 #else
     if (ret < 0 && socket_errno() != EINPROGRESS) {
 #endif
         // perror("connect");
-        closesocket(connfd);
-        return socket_errno_negative();
+        goto error;
     }
+
     return connfd;
+error:
+    return socket_errno_negative(connfd);
 }
 
 static int ListenFD(int sockfd) {
     if (sockfd < 0) return sockfd;
     if (listen(sockfd, SOMAXCONN) < 0) {
         perror("listen");
-        closesocket(sockfd);
-        return socket_errno_negative();
+        return socket_errno_negative(sockfd);
     }
     return sockfd;
 }
 
 static int ConnectFDTimeout(int connfd, int ms) {
-    int err;
+    int err = 0;
     socklen_t optlen = sizeof(err);
     struct timeval tv = { ms / 1000, (ms % 1000) * 1000 };
     fd_set writefds;
@@ -273,13 +274,13 @@ static int ConnectFDTimeout(int connfd, int ms) {
         goto error;
     }
     if (getsockopt(connfd, SOL_SOCKET, SO_ERROR, (char*)&err, &optlen) < 0 || err != 0) {
+        if (err != 0) errno = err;
         goto error;
     }
     blocking(connfd);
     return connfd;
 error:
-    closesocket(connfd);
-    return socket_errno_negative();
+    return socket_errno_negative(connfd);
 }
 
 int Bind(int port, const char* host, int type) {
@@ -357,10 +358,8 @@ int ConnectUnixTimeout(const char* path, int ms) {
 #endif
 
 int Socketpair(int family, int type, int protocol, int sv[2]) {
-#ifdef OS_UNIX
-    if (family == AF_UNIX) {
-        return socketpair(family, type, protocol, sv);
-    }
+#if defined(OS_UNIX) && HAVE_SOCKETPAIR
+    return socketpair(AF_LOCAL, type, protocol, sv);
 #endif
     if (family != AF_INET || type != SOCK_STREAM) {
         return -1;
@@ -369,7 +368,7 @@ int Socketpair(int family, int type, int protocol, int sv[2]) {
     WSAInit();
 #endif
     int listenfd, connfd, acceptfd;
-    listenfd = connfd = acceptfd = INVALID_SOCKET;
+    listenfd = connfd = acceptfd = -1;
     struct sockaddr_in localaddr;
     socklen_t addrlen = sizeof(localaddr);
     memset(&localaddr, 0, addrlen);
@@ -416,13 +415,13 @@ int Socketpair(int family, int type, int protocol, int sv[2]) {
     sv[1] = acceptfd;
     return 0;
 error:
-    if (listenfd != INVALID_SOCKET) {
+    if (listenfd != -1) {
         closesocket(listenfd);
     }
-    if (connfd != INVALID_SOCKET) {
+    if (connfd != -1) {
         closesocket(connfd);
     }
-    if (acceptfd != INVALID_SOCKET) {
+    if (acceptfd != -1) {
         closesocket(acceptfd);
     }
     return -1;

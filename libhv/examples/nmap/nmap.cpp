@@ -96,9 +96,7 @@ int nmap_discover(Nmap* nmap) {
                 return -socket_errno();
             }
             nonblocking(sockfd);
-            int len = 425984; // 416K
-            socklen_t optlen = sizeof(len);
-            setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&len, optlen);
+            so_sndbuf(sockfd, 425984); // 416K
 
             io = hio_get(loop, sockfd);
             if (io == NULL) return -1;
@@ -117,8 +115,7 @@ int nmap_discover(Nmap* nmap) {
         memset(&peeraddr, 0, addrlen);
         peeraddr.sin_family = AF_INET;
         peeraddr.sin_addr.s_addr = iter->first;
-        hio_set_peeraddr(io, (struct sockaddr*)&peeraddr, addrlen);
-        hsendto(loop, hio_fd(io), sendbuf, sizeof(sendbuf), NULL);
+        hio_sendto(io, sendbuf, sizeof(sendbuf), (struct sockaddr*)&peeraddr);
         ++ctx.send_cnt;
     }
 
@@ -138,7 +135,7 @@ int nmap_discover(Nmap* nmap) {
         ++iter;
     }
     printd("Nmap done: %lu IP addresses (%d hosts up) scanned in %.2f seconds\n",
-            nmap->size(), ctx.up_cnt, (end_hrtime-start_hrtime)/1000000.0f);
+            (unsigned long)nmap->size(), ctx.up_cnt, (end_hrtime-start_hrtime)/1000000.0f);
 
     return ctx.up_cnt;
 }

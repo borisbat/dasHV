@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.6)
+cmake_policy(SET CMP0077 NEW)
 
-project(hv VERSION 1.2.3)
+project(hv VERSION 1.3.3)
 
 option(BUILD_SHARED "build shared library" ON)
 option(BUILD_STATIC "build static library" ON)
@@ -15,20 +16,42 @@ option(WITH_EVPP "compile evpp" ON)
 option(WITH_HTTP "compile http" ON)
 option(WITH_HTTP_SERVER "compile http/server" ON)
 option(WITH_HTTP_CLIENT "compile http/client" ON)
+option(WITH_MQTT "compile mqtt" OFF)
 
-option(ENABLE_IPV6 "ipv6" OFF)
 option(ENABLE_UDS "Unix Domain Socket" OFF)
-option(ENABLE_WINDUMP "Windows MiniDumpWriteDump" OFF)
 option(USE_MULTIMAP "MultiMap" OFF)
 
-option(WITH_CURL "with curl library" OFF)
+option(WITH_CURL "with curl library (deprecated)" OFF)
 option(WITH_NGHTTP2 "with nghttp2 library" OFF)
 
 option(WITH_OPENSSL "with openssl library" OFF)
 option(WITH_GNUTLS  "with gnutls library"  OFF)
 option(WITH_MBEDTLS "with mbedtls library" OFF)
 
-option(WITH_KCP "with kcp" OFF)
+option(WITH_KCP "compile event/kcp" OFF)
+
+if(WIN32 OR MINGW)
+    option(WITH_WEPOLL "compile event/wepoll -> use iocp" ON)
+    option(ENABLE_WINDUMP "Windows MiniDumpWriteDump" OFF)
+    option(BUILD_FOR_MT "build for /MT" OFF)
+    if(BUILD_FOR_MT)
+        set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /MTd")
+        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+        set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MT")
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+    endif()
+endif()
+
+message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}")
+if(NOT "${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
+    set(BUILD_EXAMPLES OFF)
+endif()
+
+if(IOS)
+    set(BUILD_SHARED OFF)
+    set(BUILD_EXAMPLES OFF)
+endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
 include(utils)
@@ -44,6 +67,8 @@ check_header("sys/stat.h")
 check_header("sys/time.h")
 check_header("fcntl.h")
 check_header("pthread.h")
+check_header("endian.h")
+check_header("sys/endian.h")
 
 # Checks for functions
 if(NOT MSVC)
@@ -57,6 +82,18 @@ check_function("gettimeofday" "sys/time.h")
 check_function("pthread_spin_lock" "pthread.h")
 check_function("pthread_mutex_timedlock" "pthread.h")
 check_function("sem_timedwait" "semaphore.h")
+check_function("pipe" "unistd.h")
+check_function("socketpair" "sys/socket.h")
+check_function("eventfd" "sys/eventfd.h")
+check_function("setproctitle" "unistd.h")
+
+if (NOT HAVE_CLOCK_GETTIME)
+    include(CheckLibraryExists)
+    check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME_IN_RT)
+    if (HAVE_CLOCK_GETTIME_IN_RT)
+        set(HAVE_CLOCK_GETTIME ${HAVE_CLOCK_GETTIME_IN_RT})
+    endif()
+endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/hconfig.h.in ${CMAKE_CURRENT_SOURCE_DIR}/hconfig.h)
 
@@ -77,12 +114,7 @@ message(STATUS "CMAKE_LIBRARY_OUTPUT_DIRECTORY=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
 
 set(INCDIRS . include 3rd/include)
 set(LIBDIRS . lib 3rd/lib)
-
-if(WITH_OPENSSL AND WIN32)
-include_directories(${INCDIRS} ${SRCDIR} ${OPENSSL_INCLUDE_DIR})
-else()
 include_directories(${INCDIRS} ${SRCDIR})
-endif()
 link_directories(${LIBDIRS})
 
 message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
@@ -90,10 +122,6 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     add_definitions(-DDEBUG)
 else()
     add_definitions(-DNDEBUG)
-endif()
-
-if(ENABLE_IPV6)
-    add_definitions(-DENABLE_IPV6)
 endif()
 
 if(ENABLE_UDS)
@@ -107,7 +135,7 @@ endif()
 if(WITH_CURL)
     add_definitions(-DWITH_CURL)
     set(LIBS ${LIBS} curl)
-    if(WIN32)
+    if(WIN32 OR MINGW)
         set(LIBS ${LIBS} wldap32 advapi32 crypt32)
     endif()
 endif()
@@ -119,7 +147,12 @@ endif()
 
 if(WITH_OPENSSL)
     add_definitions(-DWITH_OPENSSL)
-    set(LIBS ${LIBS} ssl crypto)
+    find_package(OpenSSL)
+    if(OpenSSL_FOUND)
+        set(LIBS ${LIBS} OpenSSL::SSL OpenSSL::Crypto)
+    else()
+        set(LIBS ${LIBS} ssl crypto)
+    endif()
 endif()
 
 if(WITH_GNUTLS)
@@ -132,9 +165,9 @@ if(WITH_MBEDTLS)
     set(LIBS ${LIBS} mbedtls mbedx509 mbedcrypto)
 endif()
 
-if(WIN32)
-    add_definitions(-D_WIN32_WINNT=0x0600)
-    set(LIBS ${LIBS} winmm iphlpapi ws2_32)
+if(WIN32 OR MINGW)
+    add_definitions(-DWIN32_LEAN_AND_MEAN -D_CRT_SECURE_NO_WARNINGS -D_WIN32_WINNT=0x0600)
+    set(LIBS ${LIBS} secur32 crypt32 winmm iphlpapi ws2_32)
     if(ENABLE_WINDUMP)
         add_definitions(-DENABLE_WINDUMP)
         set(LIBS ${LIBS} dbghelp)
@@ -143,9 +176,10 @@ endif()
 
 if(ANDROID)
     set(LIBS ${LIBS} log)
-elseif(UNIX)
+elseif(UNIX AND NOT MINGW)
     set(LIBS ${LIBS} pthread m dl)
-    if(CMAKE_COMPILER_IS_GNUCC)
+    find_library(RT_LIBRARY rt)
+    if(RT_LIBRARY)
         set(LIBS ${LIBS} rt)
     endif()
 endif()
@@ -155,8 +189,13 @@ if(APPLE)
 endif()
 
 # see Makefile
-set(ALL_SRCDIRS . base ssl event event/kcp util cpputil evpp protocol http http/client http/server)
+set(ALL_SRCDIRS . base ssl event event/kcp util cpputil evpp protocol http http/client http/server mqtt)
 set(CORE_SRCDIRS . base ssl event)
+if(WIN32 OR MINGW)
+    if(WITH_WEPOLL)
+        set(CORE_SRCDIRS ${CORE_SRCDIRS} event/wepoll)
+    endif()
+endif()
 if(WITH_KCP)
     set(CORE_SRCDIRS ${CORE_SRCDIRS} event/kcp)
 endif()
@@ -193,14 +232,29 @@ if(WITH_EVPP)
     endif()
 endif()
 
+if(WITH_MQTT)
+    set(LIBHV_HEADERS ${LIBHV_HEADERS} ${MQTT_HEADERS})
+    set(LIBHV_SRCDIRS ${LIBHV_SRCDIRS} mqtt)
+endif()
+
 list_source_directories(LIBHV_SRCS ${LIBHV_SRCDIRS})
+if(WIN32)
+    set(CMAKE_RC_FLAGS_DEBUG -D_DEBUG)
+    configure_file(${PROJECT_SOURCE_DIR}/${PROJECT_NAME}.rc.in ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.rc)
+    list(APPEND LIBHV_SRCS ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.rc)
+endif()
+
+file(INSTALL ${LIBHV_HEADERS} DESTINATION include/hv)
+file(INSTALL ${LIBHV_HEADERS} DESTINATION ${PROJECT_SOURCE_DIR}/include/hv)
 
 if(BUILD_SHARED)
     add_library(hv SHARED ${LIBHV_SRCS})
     target_compile_definitions(hv PRIVATE HV_DYNAMICLIB)
-    target_include_directories(hv PRIVATE ${LIBHV_SRCDIRS})
+    target_include_directories(hv PRIVATE ${LIBHV_SRCDIRS}
+        INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
     target_link_libraries(hv ${LIBS})
     install(TARGETS hv
+        EXPORT libhvConfig
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin)
@@ -209,18 +263,23 @@ endif()
 
 if(BUILD_STATIC)
     add_library(hv_static STATIC ${LIBHV_SRCS})
-    target_compile_definitions(hv_static PRIVATE HV_STATICLIB)
-    target_include_directories(hv_static PRIVATE ${LIBHV_SRCDIRS})
-    install(TARGETS hv_static DESTINATION lib)
+    target_compile_definitions(hv_static PUBLIC HV_STATICLIB)
+    target_include_directories(hv_static PRIVATE ${LIBHV_SRCDIRS}
+        INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+    target_link_libraries(hv_static ${LIBS})
+    install(TARGETS hv_static
+        EXPORT libhvConfig
+        ARCHIVE DESTINATION lib)
     add_custom_target(libhv_static DEPENDS hv_static)
 endif()
 
-file(INSTALL ${LIBHV_HEADERS} DESTINATION include/hv)
 install(FILES ${LIBHV_HEADERS} DESTINATION include/hv)
+install(EXPORT libhvConfig DESTINATION lib/cmake/libhv)
 
 if(BUILD_SHARED)
     set(HV_LIBRARIES hv CACHE INTERNAL "link hv libraries")
 else()
+    add_definitions(-DHV_STATICLIB)
     set(HV_LIBRARIES hv_static ${LIBS} CACHE INTERNAL "link hv libraries")
 endif()
 
@@ -235,3 +294,24 @@ endif()
 if(BUILD_UNITTEST)
     add_subdirectory(unittest)
 endif()
+
+# CPack settings
+set(CPACK_PACKAGE_NAME "libhv")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_RELEASE 1)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A high-performance C/C++ network library")
+set(CPACK_PACKAGE_VENDOR "libhv")
+set(CPACK_PACKAGE_CONTACT "ithewei <ithewei@163.com>")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_HOST_SYSTEM_PROCESSOR}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+
+# Specify the package generators
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
+
+# Enable CPack debug output
+set(CPACK_PACKAGE_DEBUG True)
+
+# https://cmake.org/cmake/help/latest/variable/CPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION.html
+set(CPACK_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION "ON")
+include(CPack)
