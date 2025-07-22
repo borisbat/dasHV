@@ -23,8 +23,8 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 
 			# Note that under Ninja it should be run from VS developer code Prompt to setup all variables (or call vcvarsall.bat)
 			ExternalProject_Add(openssl_build
-				URL "https://www.openssl.org/source/openssl-1.1.1l.tar.gz"
-				URL_HASH SHA256=0b7a3e5e59c34827fe0c3a74b7ec8baef302b98fa80088d7f9153aa16fa76bd1
+				URL "https://www.openssl.org/source/openssl-3.5.1.tar.gz"
+				URL_HASH SHA256=529043b15cffa5f36077a4d0af83f3de399807181d607441d734196d889b641f
 				PREFIX ${OPENSSL_ROOT_DIR}
 				CONFIGURE_COMMAND perl Configure ${OPENSSL_ARCH} no-shared --prefix=${OPENSSL_ROOT_DIR} --openssldir=${OPENSSL_ROOT_DIR}
 				BUILD_COMMAND nmake
