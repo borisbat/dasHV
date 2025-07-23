@@ -8,33 +8,41 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 	include(ExternalProject)
 
 	IF(WIN32)
-		find_package(OpenSSL REQUIRED)
+		set(OPENSSL_ROOT_DIR "${CMAKE_BINARY_DIR}/openssl")
+		find_package(OpenSSL QUIET PATHS ${OPENSSL_ROOT_DIR})
 		IF(NOT OpenSSL_FOUND)
-			# Install and build it from sources. Do we need it?
+			# Build openssl from sources
 			if(${CMAKE_SIZEOF_VOID_P} EQUAL 8)
 				set(OPENSSL_ARCH "VC-WIN64A")
 			else()
 				set(OPENSSL_ARCH "VC-WIN32")
 			endif()
-			set(OPENSSL_ROOT_DIR "${CMAKE_BINARY_DIR}/openssl")
 			set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
 			set(OPENSSL_LIBRARIES ${OPENSSL_ROOT_DIR}/lib)
+			set(OPENSSL_LIBRARIES_FILES ${OPENSSL_ROOT_DIR}/lib/libcrypto.lib ${OPENSSL_ROOT_DIR}/lib/libssl.lib)
 
+			# Note that under Ninja it should be run from VS developer code Prompt to setup all variables (or call vcvarsall.bat)
 			ExternalProject_Add(openssl_build
-				URL "https://www.openssl.org/source/openssl-1.1.1l.tar.gz"
-				URL_HASH SHA256=0b7a3e5e59c34827fe0c3a74b7ec8baef302b98fa80088d7f9153aa16fa76bd1
+				URL "https://www.openssl.org/source/openssl-3.5.1.tar.gz"
+				URL_HASH SHA256=529043b15cffa5f36077a4d0af83f3de399807181d607441d734196d889b641f
 				PREFIX ${OPENSSL_ROOT_DIR}
 				CONFIGURE_COMMAND perl Configure ${OPENSSL_ARCH} no-shared --prefix=${OPENSSL_ROOT_DIR} --openssldir=${OPENSSL_ROOT_DIR}
 				BUILD_COMMAND nmake
 				INSTALL_COMMAND nmake install_sw
 				BUILD_IN_SOURCE 1
+				BUILD_BYPRODUCTS ${OPENSSL_LIBRARIES_FILES}
 			)
+			list(APPEND OPENSSL_LIBRARIES_FILES Crypt32.lib)
 			SET(OPENSSL_FROM_SOURCES TRUE)
+		ELSE()
+			SET(OPENSSL_LIBRARIES_FILES OpenSSL::Crypto OpenSSL::SSL)
 		ENDIF()
+
 		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/hv_static.lib)
 	ELSE()
 		find_package(OpenSSL REQUIRED)
 		SET(HV_LIBRARIES ${DAS_HV_DIR}/hv/lib/libhv_static.a)
+		SET(OPENSSL_LIBRARIES_FILES OpenSSL::Crypto OpenSSL::SSL)
 	ENDIF()
 
 
@@ -49,20 +57,14 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 		-DCMAKE_LINKER=${CMAKE_LINKER}
 		-DWITH_OPENSSL=ON
 		-DOPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}
+		-DOPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR}
 		-DOPENSSL_LIBRARIES="${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}"
 	)
-	IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" AND (NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
-		# todo: remove. For some reasons clang-cl doesn't work well without this flag.
-		list(APPEND HV_CMAKE_FLAGS
-			-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-		)
-	ENDIF()
-
 	ExternalProject_Add(
 		LIBHV
 		SOURCE_DIR ${DAS_HV_DIR}/libhv
 		CMAKE_ARGS ${HV_CMAKE_FLAGS}
-		BINARY_DIR ${DAS_HV_DIR}/libhv/build
+		BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libhv/build
 		BUILD_BYPRODUCTS ${HV_LIBRARIES}
 	)
 	IF(OPENSSL_FROM_SOURCES)
@@ -89,8 +91,7 @@ IF ((NOT DAS_HV_INCLUDED) AND ((NOT ${DAS_HV_DISABLED}) OR (NOT DEFINED DAS_HV_D
 	ADD_LIBRARY(libDasModuleHV ${DAS_HV_MODULE_SRC} ${DAS_HV_MODULE_PLATFORM_SRC})
 	ADD_DEPENDENCIES(libDasModuleHV LIBHV)
 	TARGET_INCLUDE_DIRECTORIES(libDasModuleHV PUBLIC "${DAS_HV_DIR}/hv/include")
-	TARGET_LINK_LIBRARIES(libDasModuleHV ${HV_LIBRARIES})
-	target_link_libraries(libDasModuleHV OpenSSL::Crypto OpenSSL::SSL)
+	TARGET_LINK_LIBRARIES(libDasModuleHV ${HV_LIBRARIES} ${OPENSSL_LIBRARIES_FILES})
 	SETUP_CPP11(libDasModuleHV)
 
 	ADD_MODULE_DAS(dashv dashv dashv_boost)
