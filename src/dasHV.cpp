@@ -1,9 +1,5 @@
 #include "daScript/misc/platform.h"
 
-#include "daScript/ast/ast.h"
-#include "daScript/ast/ast_interop.h"
-#include "daScript/ast/ast_typefactory_bind.h"
-#include "daScript/ast/ast_handle.h"
 
 #include "../../../src/builtin/module_builtin_rtti.h"
 
