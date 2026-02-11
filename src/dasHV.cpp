@@ -599,6 +599,7 @@ public:
     }
 };
 
+REGISTER_DYN_MODULE(Module_HV,Module_HV);
 }
 
 REGISTER_MODULE_IN_NAMESPACE(Module_HV,das);
